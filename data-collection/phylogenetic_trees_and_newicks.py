@@ -8,18 +8,43 @@ import matplotlib.pyplot as plt
 # ncbi taxonomy
 ncbi = NCBITaxa()
 
-# Given a preferred number of taxa (amount as int) generates a list of a random amount (between 2 and the chosen amount+2) of random valid taxa
-# + 2 to ensure that theres always at least 2 taxon and the get_topology function doesnt return an error
-# not all numbers from 1-1000 are valid entries => check if taxon ID is valid
-def generate_random_taxids(amount):
+# Check if a given taxid is valid 
+def is_valid(taxid):
+    if ncbi.get_taxid_translator([taxid]):
+        return True
+    else:
+        return False
+    
+# Counts amount of invalid taxids in the first 10000
+def amount_invalid():
+    counter = 0
+    for taxid in range(10000):
+        if not is_valid(taxid):
+            counter += 1
+    return counter
+# Given a preferred number of taxa (amount as int) and a boolean generates either a list with fixed or randomized amount [2, amount] of random valid taxa
+#
+# default amount of taxa is 10
+# not all numbers from 1-1000 are valid entries => check if taxon ID is valid (dictionary of translator is not empty)
+def generate_random_taxids(amount = 10, randomize = False):
     valid_rand_taxids = []
-    for i in range(random.randint(amount) + 2):
-        rand_taxid = [random.randint(10000)]
-        if ncbi.get_taxid_translator(rand_taxid):
-            valid_rand_taxids.append(rand_taxid[0])
+    # if randomize = True, randomize the amount of taxa (0-amount)
+    if randomize:
+        amount = random.randint(amount)
+    # in any case let the minimum amount of taxa be 2
+    if (amount <= 1):
+        amount = 2
+    # Add a valid taxid <amount> times
+    i = 0
+    while i < amount:
+        rand_taxid = random.randint(10000)
+        if is_valid(rand_taxid):
+            valid_rand_taxids.append(rand_taxid)
+            i += 1
     return valid_rand_taxids
 
-# given a list of random valid taxids returns a list of the corresponding taxa names 
+# Given a list of random valid taxids returns a list of the corresponding taxa names 
+# 
 # output of get_taxid_translator is a dictionary where the keys are the taxon IDs and the values the 
 def taxids_to_taxa(valid_rand_taxids):  
     valid_rand_taxa_dict = ncbi.get_taxid_translator(valid_rand_taxids)
@@ -33,14 +58,21 @@ def generate_newick_tree(valid_rand_taxa):
     return ncbi.get_topology(valid_rand_taxa).write()
 
 # Given a newick tree as a string, generates an image of the newick tree 
+#
 # draws the tree using bio.phylo and matplotlib therefore must first be made into a newick file
 def tree_to_image_file(newick):
     # make the the newick tree (string) into a file so that it can be drawn by bio.phylo (not elegant?)
     newick_file = StringIO(newick)
     newick_tree = Phylo.read(newick_file, "newick")
+    # create the figure
+    #fig = plt.figure()
+    #axes = fig.add_subplot(1,1,1)
+    # draw the tree on the axes
     newick_tree.rooted = True
+    # Phylo.draw(newick_tree, axes = axes)
     Phylo.draw(newick_tree)
-    plt.savefig("phylo_tree.jpg")
+    #plt.savefig("phylo_tree.jpg")
+    #plt.close()
 
 # TODO: add function that edits newick file so that the generated images contain the taxa names not their IDs
 # TODO: add function that edits newick file so that the distances of the newick tree are randomized before its drawn
@@ -49,33 +81,73 @@ def main():
     argument_parser = argparse.ArgumentParser(
         description="Data Collection for Extracting phylogenies from images using AI"
     )
-    
-    # arguments
-    
-    # TODO: add parameter for choosing if the amount of taxa is randomized or not
+    #
+    # Arguments
+    #
     
     # TODO: add parameter to make random distances optional (0 for standard distance of 1, 1 for randomized distances)
     
     # parameter for the preferred number of taxa generated, if not specified defaults to 10 taxa
-    argument_parser.add_argument('-m', '--max_amount_taxa', required=False,
-                                 help='The amount of taxa generated is randomized. Choose the preferred upper limit of generated taxa. If not specified defaults to a maximum 10 taxa.')
+    argument_parser.add_argument('-a', '--amount_taxa', required=False, type=int,
+                                 help='Type=Int. Choose the preferred amount of generated taxa. If not specified defaults to 10 taxa.')
+    argument_parser.add_argument('-r', '--randomize_amount', required=False, action='store_true',
+                                 help='On/Off flag. Randomizes the amount of taxa generated. Range: 2 to <amount_taxa>. Per default the amount of taxa is not randomized.')
     # Specified parameters
     args = argument_parser.parse_args()
     
     #
-    # Main functionality:
+    # Main functionality
     #
+    
     # if the amount of taxa is not specified it defaults to 10 taxa
-    max_amount_taxa = args.max_amount_taxa
-    if(max_amount_taxa == None):
-        max_amount_taxa = 10
-        
+    amount_taxa = args.amount_taxa
+    randomize_amount = args.randomize_amount
+    
+    # if amount of taxa and randomize_amount are specified then call generate_random_taxids() with the amount of taxa and randomize set to True
+    random_taxids = []
+    # -a and -r specified
+    if amount_taxa != None and randomize_amount == True:
+        random_taxids = generate_random_taxids(amount=amount_taxa, randomize=True)
+        newick = generate_newick_tree(random_taxids)
+        print("foo")
+    # -a specified, -r=False
+    elif amount_taxa != None and randomize_amount == False:
+        random_taxids = generate_random_taxids(amount=amount_taxa)
+        newick = generate_newick_tree(random_taxids)
+        print("bar")
+    # -r specified, -a=None
+    elif amount_taxa == None and randomize_amount == True:
+        random_taxids = generate_random_taxids(randomize=True)
+        newick = generate_newick_tree(random_taxids)
+        print("far")
+    # neither specified, -a=None, -r=False
+    else:
+        random_taxids = generate_random_taxids()
+        newick = generate_newick_tree(random_taxids)
+        print("feng")
+    
     # Generates the newick tree
-    newick = generate_newick_tree(generate_random_taxids(max_amount_taxa))
     print(newick)
     tree_to_image_file(newick)
     
     
+    
+    #
+    # Testing main functionality
+    #
+    
+    print(f"Randomize amount: {randomize_amount}. Specified amount of taxa: {amount_taxa}. Actual amount of taxa: {len(random_taxids)}")
+    
+    
+    # taxid_list = generate_random_taxids(amount=10, randomize=False)
+    # newick = generate_newick_tree(taxid_list)
+    # print(len(taxid_list))
+    
+    # print("Amount taxa:", amount_taxa)
+    # print("Randomize amount:", randomize_amount)
+    
+    # there are 1149 invalid taxids in the first 10000 taxids
+    # print(amount_invalid())
     
     
 # execute the main method
