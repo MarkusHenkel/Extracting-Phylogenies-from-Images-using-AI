@@ -40,3 +40,5 @@ Repository for my Bachelors thesis on the extraction of phylogenies from images 
 ### Problems
 - [ ] phylo trees are not strictly binary
 - [ ] taxa amount of 0 might cause issues
+- [ ] issue with the taxa names in the tree, dont seem to be correct sometimes, maybe taxa names are truncated at spaces?
+- [ ]  
