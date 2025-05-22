@@ -6,6 +6,9 @@ import datetime
 import argparse
 import matplotlib.pyplot as plt
 import re
+import os
+import pathlib
+
 
 # TODO: replace comments with pydocs
 
@@ -60,10 +63,15 @@ def taxids_to_taxa(valid_rand_taxids):
 def generate_newick_tree(valid_rand_taxa):
     return ncbi.get_topology(valid_rand_taxa).write()
 
-# Given a newick tree as a string, generates an image of the newick tree 
-#
-# draws the tree using bio.phylo and matplotlib therefore must first be made into a newick file
-def tree_to_image_file(newick):
+def tree_to_image_file(newick, path, file_id):
+    """
+    Given a newick tree as a string, generates an image of the newick tree and saves it to the specified path.
+    Draws the tree using bio.phylo and matplotlib therefore must first be made into a newick file.
+
+    Args:
+        newick (str): newick string of the phylogenetic tree to be created
+        path (str): path where the file is saved  
+    """
     # make the the newick tree (string) into a file so that it can be drawn by bio.phylo (not elegant?)
     newick_file = StringIO(newick)
     newick_tree = Phylo.read(newick_file, "newick")
@@ -72,7 +80,9 @@ def tree_to_image_file(newick):
     axes = fig.add_subplot(1, 1, 1)
     newick_tree.rooted = True
     Phylo.draw(newick_tree, axes=axes, do_show=False)
-    plt.savefig(f"tree_{str(datetime.datetime.now().strftime(r"%Y-%m-%d-%H-%M-%S-%f"))}.jpg")
+    image_path = path + f"\\tree_{file_id}.jpg" 
+    # print("Test path: " + image_path)
+    plt.savefig(image_path)
     plt.close()
 
 def taxids_from_newick(newick_string):
@@ -100,8 +110,8 @@ def translate_newick_tree(newick_string):
     """
     taxids = taxids_from_newick(newick_string)
     taxa = taxids_to_taxa(taxids)
-    print("Taxa Test:")
-    print(taxa)
+    # print("Taxa Test:")
+    # print(taxa)
     for i in range(len(taxids)):
         newick_string = newick_string.replace(taxids[i], taxa[i].replace(" ","_"))
         # print(taxids[i]+ " => " + taxa[i].replace(" ","_"))
@@ -116,14 +126,32 @@ def randomize_distances(newick_string, max_distance):
         newick_string (str): The tree in newick format
         max_distance (float): upper limit of randomized distances
     """
-    # Helper function for getting a new random float each time a match is substituted 
-    def rand_float_string(_):
-        return str(round(random.uniform(max_distance), 2))
-    # instead of passing a random float to re.sub() a function is passed so that each time it is called a new float is generated
-    newick_string = re.sub(r"(?<=[:)])\d+", rand_float_string, newick_string)
+    # if re.sub() is given a lambda it tries to give the match object to the lambda but the lambda doesnt take any inputs
+    # and instead generates a new random float each time a match is found
+    newick_string = re.sub(
+        r"(?<=[:)])\d+",
+        lambda _: str(round(random.uniform(max_distance), 2)),
+        newick_string)
     return newick_string
     
-# TODO: add function that puts the image and a text file with the newick inside a folder 
+# TODO: add function that puts the image and a text file with the newick inside a folder
+def create_output_directory(newick_taxa, path, file_id):
+    """
+    Given the completely processed newick string creates a directory with at specified path where a folder with the 
+    image and the newick string and a specified file ID that is appended to the end of the directory name
+
+    Args:
+        newick_taxa (_type_): _description_
+        path (_type_): _description_
+        file_id (_type_): _description_
+    """
+    if not os.path.exists(path):
+        os.makedirs(path)
+    tree_to_image_file(newick_taxa, path, file_id)
+    newick_path = path + f"\\newick_{file_id}.txt"
+    txt_file = open(newick_path, "w")
+    txt_file.write(newick_taxa)
+    txt_file.close() 
 
 def main():
     argument_parser = argparse.ArgumentParser(
@@ -178,18 +206,21 @@ def main():
         newick_taxids = generate_newick_tree(random_taxids)
         newick_taxa = translate_newick_tree(newick_taxids)
     
-    # randomize the distances
+    # randomize the distances if a max distance is specified
     if max_distance != None:
         newick_taxa = randomize_distances(newick_taxa, max_distance)
     
-    # Generates the output
+    # 
+    # Generation of output
+    #
     print("Data generation for extracting phylogenies from images using AI.")
     print("Run at: "+ str(datetime.datetime.now()))
     print(f"Parameters:\n  Randomize distances: {str(False if max_distance == None else True)}\n  Max distance: {max_distance if max_distance != None else 1}")
     print(f"  Specified amount of taxa: {amount_taxa}\n  Actual amount of taxa: {len(random_taxids)}")
     print(f"Newick tree:\n{newick_taxa}")
-    
-    tree_to_image_file(newick_taxa)
+    file_id = str(datetime.datetime.now().strftime(r"%Y-%m-%d-%H-%M-%S-%f"))
+    path = str(pathlib.Path(__file__).parent.resolve()) + f"\generated_data\data_{str(datetime.datetime.now().strftime(r"%Y-%m-%d-%H-%M-%S-%f"))}"
+    create_output_directory(newick_taxa, path, file_id)
     
     
     #
