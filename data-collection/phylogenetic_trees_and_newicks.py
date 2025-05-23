@@ -134,7 +134,6 @@ def randomize_distances(newick_string, max_distance):
         newick_string)
     return newick_string
     
-# TODO: add function that puts the image and a text file with the newick inside a folder
 def create_output_directory(newick_taxa, path, file_id):
     """
     Given the completely processed newick string creates a directory with at specified path where a folder with the 
@@ -160,8 +159,6 @@ def main():
     #
     # Arguments
     #
-    
-    # TODO: change name of image file to something that increments
     
     # parameter for the preferred number of taxa generated, if not specified defaults to 10 taxa
     argument_parser.add_argument('-a', '--amount_taxa', required=False, type=int,
@@ -219,41 +216,9 @@ def main():
     print(f"  Specified amount of taxa: {amount_taxa}\n  Actual amount of taxa: {len(random_taxids)}")
     print(f"Newick tree:\n{newick_taxa}")
     file_id = str(datetime.datetime.now().strftime(r"%Y-%m-%d-%H-%M-%S-%f"))
-    path = str(pathlib.Path(__file__).parent.resolve()) + f"\generated_data\data_{str(datetime.datetime.now().strftime(r"%Y-%m-%d-%H-%M-%S-%f"))}"
+    path = str(pathlib.Path(__file__).parent.resolve()) + f"\\generated_data\\data_{str(datetime.datetime.now().strftime(r"%Y-%m-%d-%H-%M-%S-%f"))}"
     create_output_directory(newick_taxa, path, file_id)
-    
-    
-    #
-    # Testing main functionality
-    #
-    # print()
-    # print("With taxids:","(((((((8610:1,8834:1)1:1,9881:1)1:1,8343:1)1:1,7755:1)1:1,6957:1)1:1,(4466:1,4151:1)1:1)1:1,(1381:1,2366:1)1:1);")
-    # print("Translation:", translate_newick_tree("(((((((8610:1,8834:1)1:1,9881:1)1:1,8343:1)1:1,7755:1)1:1,6957:1)1:1,(4466:1,4151:1)1:1)1:1,(1381:1,2366:1)1:1);"))
-    # taxid_list = generate_random_taxids(amount=10, randomize=False)
-    # newick = generate_newick_tree(taxid_list)
-    # print(len(taxid_list))
-    
-    # print("Amount taxa:", amount_taxa)
-    # print("Randomize amount:", randomize_amount)
-    
-    # there are 1149 invalid taxids in the first 10000 taxids
-    # print(amount_invalid())
-    
     
 # execute the main method
 main()
 
-#
-# Testing the ETE Toolkit functionality:
-#
-
-# 2890 is no a valid taxid, so the returned dictionary of translations is empty and it doesnt result in an error 
-# => if dictionary is empty then the ID is not valid
-# taxid_list = [2890]
-# taxid_name = ncbi.get_taxid_translator(taxid_list)
-# print(taxid_name)
-
-# when translating the taxids into their respective names get_taxid_translator() will return a dictionary where the keys are the taxids 
-# and the values are the taxon names
-# test_taxids = [23, 24, 25]
-# print(ncbi.get_taxid_translator(test_taxids))
