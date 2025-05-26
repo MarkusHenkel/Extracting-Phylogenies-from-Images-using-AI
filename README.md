@@ -8,12 +8,12 @@ The project contains 5 major steps for generating images, generating a response 
 4. Summary of comparisons
 5. Shell script for the complete pipeline
 
-### 1. Generation of data
-#### Input
+## 1. Generation of data
+### Input
 Arguments for whatever type of data is supposed to be generated (i.e. newicks with random distances and 10 taxa, newicks with fixed distances of one and a random amount of taxa between 2 and a specified amount, etc.)
-#### Output 
+### Output 
 Directory containing a text file with the newick inside and an image file containing the corresponding phylogenetic tree 
-#### General idea
+### General idea
 1. Depending on the given arguments generate a random amount of taxa between 2 and the specified maximum amount
 2. Using the ETE toolkit and the NCBI taxonomy generate the newick tree from random taxon IDs   
 3. Translate the taxon IDs to the actual taxa
@@ -23,14 +23,14 @@ Directory containing a text file with the newick inside and an image file contai
 7. Save the drawn image using matplotlib
 8. Put both image and text file containing newick tree into a directory called data inside the generated_data directory
 
-### 2. Newick encoding with AI model
+## 2. Newick encoding with AI model
 This part is made as its own module with the intention that the pipeline as a whole works with different models. This way different models can be used and their results can be  compared easily.
 
-#### Input
+### Input
 Directory containing an image of the phylogenetic tree and a text file containing the newick string
-#### Output
+### Output
 The input directory updated with a text file with the generated newick string  
-#### General idea
+### General idea
 1. given one directory from the generated_data directory 
 	- the user has to specify the path to this folder
 2. the directory is looked into and the image (binary) and the text file containing the newick saved into variables
@@ -38,33 +38,33 @@ The input directory updated with a text file with the generated newick string
 4. the base64 image is given to the API and the answer is saved to a string 
 5. the string is saved to a text file called generated_newick with the same file ID as the image and the actual newick into the same directory
 
-### 3. Comparison of actual and generated Newick string 
-#### Input
+## 3. Comparison of actual and generated Newick string 
+### Input
 Directory containing the image, actual and generated newick string 
-#### Output
+### Output
 The input directory updated with a comparison file that describes the differences between the actual and the generated newick for quality control 
-#### General idea
+### General idea
 - now that we have a comparison file for each actual-newick/generated-newick  pair we need to sum up all results in one place and do statistics over how well the overall performance of our model was
 	- count the number of correct newicks 
 	- count the number of all newicks
 	- count the number of mistakes in distances
 	- count the number of mistakes in taxa
 
-### 4. Summary of comparisons
-#### Input
+## 4. Summary of comparisons
+### Input
 Comparison files of each directory inside the specified generated_data directory
-#### Output
+### Output
 File with statistics over all comparisons to do a quality analysis of the model on whatever data was initially generated 
-#### General idea
+### General idea
 - now that we have a comparison file for each actual-newick/generated-newick  pair we need to sum up all results in one place and do statistics over how well the overall performance of our model was
 	- count the number of correct newicks 
 	- count the number of all newicks
 	- count the number of mistakes in distances
 	- count the number of mistakes in taxa
 
-#### 5. Shell script for the complete pipeline
+## 5. Shell script for the complete pipeline
 This script combines all aforementioned steps in one script. The purpose of this script is to precisely check the quality of the AI generated outputs 
-# General idea
+### General idea
 - calls data generation code, newick encoding code and the comparison code
 1. calls the data generation code with arguments specified by the user
 	- make arguments like "random distances with fixed amount of taxa (i.e. 10, 20, 30)", "fixed distances with random amount of taxa (max. 30)", "fixed distances, fixed amount of taxa", etc. with a specified amount of images to be generated for each argument 
