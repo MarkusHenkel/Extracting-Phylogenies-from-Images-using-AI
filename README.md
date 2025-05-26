@@ -17,26 +17,25 @@ Directory containing a text file with the newick inside and an image file contai
 1. Depending on the given arguments generate a random amount of taxa between 2 and the specified maximum amount
 2. Using the ETE toolkit and the NCBI taxonomy generate the newick tree from random taxon IDs   
 3. Translate the taxon IDs to the actual taxa
-4. If specified randomize the distances inside the newick tree   
-5. Use Regex? to put these random numbers at the right spots inside the newick tree inside the file
+4. If specified randomize the distances inside the newick tree using regex to edit the newick string
 6. Draw the Newick tree using the draw function from Biopython
 7. Save the drawn image using matplotlib
-8. Put both image and text file containing newick tree into a directory called data inside the generated_data directory
+8. Put both image and text file containing newick tree into a directory inside the generated_data directory
 
 ## 2. Newick encoding with AI model
-This part is made as its own module with the intention that the pipeline as a whole works with different models. This way different models can be used and their results can be  compared easily.
+This part is made as its own module with the intention that the pipeline as a whole works with different models. This way different models can be used and their results can be compared easily.
 
 ### Input
-Directory containing an image of the phylogenetic tree and a text file containing the newick string
+Directory containing an image of the phylogenetic tree and a text file containing the newick string and one of these models: 
 ### Output
 The input directory updated with a text file with the generated newick string  
 ### General idea
 1. given one directory from the generated_data directory 
 	- the user has to specify the path to this folder
-2. the directory is looked into and the image (binary) and the text file containing the newick saved into variables
+2. the directory is looked into and the image (binary) saved into variables
 3. the image has to be translated to base64 
 4. the base64 image is given to the API and the answer is saved to a string 
-5. the string is saved to a text file called generated_newick with the same file ID as the image and the actual newick into the same directory
+5. the string is saved to the input directory as a text file called generated_newick with the same file ID as the input directory
 
 ## 3. Comparison of actual and generated Newick string 
 ### Input
