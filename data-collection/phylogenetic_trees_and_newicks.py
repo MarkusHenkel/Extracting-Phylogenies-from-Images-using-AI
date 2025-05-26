@@ -114,7 +114,6 @@ def translate_newick_tree(newick_string):
     # print(taxa)
     for i in range(len(taxids)):
         newick_string = newick_string.replace(taxids[i], taxa[i].replace(" ","_"))
-        # print(taxids[i]+ " => " + taxa[i].replace(" ","_"))
     return newick_string
 
 def randomize_distances(newick_string, max_distance):
@@ -147,10 +146,10 @@ def create_output_directory(newick_taxa, path, file_id):
     if not os.path.exists(path):
         os.makedirs(path)
     tree_to_image_file(newick_taxa, path, file_id)
-    newick_path = path + f"\\newick_{file_id}.txt"
-    txt_file = open(newick_path, "w")
-    txt_file.write(newick_taxa)
-    txt_file.close() 
+    newick_path = path + f"\\newick_{file_id}.nwk"
+    nwk_file = open(newick_path, "w")
+    nwk_file.write(newick_taxa)
+    nwk_file.close() 
 
 def main():
     argument_parser = argparse.ArgumentParser(
@@ -210,13 +209,15 @@ def main():
     # 
     # Generation of output
     #
+    time = str(datetime.datetime.now().strftime(r"%Y-%m-%d-%H-%M-%S-%f"))
     print("Data generation for extracting phylogenies from images using AI.")
     print("Run at: "+ str(datetime.datetime.now()))
+    print("File ID: "+ time)
     print(f"Parameters:\n  Randomize distances: {str(False if max_distance == None else True)}\n  Max distance: {max_distance if max_distance != None else 1}")
     print(f"  Specified amount of taxa: {amount_taxa}\n  Actual amount of taxa: {len(random_taxids)}")
     print(f"Newick tree:\n{newick_taxa}")
-    file_id = str(datetime.datetime.now().strftime(r"%Y-%m-%d-%H-%M-%S-%f"))
-    path = str(pathlib.Path(__file__).parent.resolve()) + f"\\generated_data\\data_{str(datetime.datetime.now().strftime(r"%Y-%m-%d-%H-%M-%S-%f"))}"
+    file_id = time
+    path = str(pathlib.Path(__file__).parent.resolve()) + f"\\generated_data\\data_{time}"
     create_output_directory(newick_taxa, path, file_id)
     
 # execute the main method
