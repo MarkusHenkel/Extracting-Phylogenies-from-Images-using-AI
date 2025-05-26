@@ -22,7 +22,7 @@ Directory containing a text file with the newick inside and an image file contai
 7. Save the drawn image using matplotlib
 8. Put both image and text file containing newick tree into a directory inside the generated_data directory
 
-## 2. Newick encoding with AI model
+## 2. Newick encoding with AI model (work in progress)
 This part is made as its own module with the intention that the pipeline as a whole works with different models. This way different models can be used and their results can be compared easily.
 
 ### Input
@@ -37,7 +37,7 @@ The input directory updated with a text file with the generated newick string
 4. the base64 image is given to the API and the answer is saved to a string 
 5. the string is saved to the input directory as a text file called generated_newick with the same file ID as the input directory
 
-## 3. Comparison of actual and generated Newick string 
+## 3. Comparison of actual and generated Newick string (in planning phase)
 ### Input
 Directory containing the image, actual and generated newick string 
 ### Output
@@ -49,7 +49,7 @@ The input directory updated with a comparison file that describes the difference
 	- count the number of mistakes in distances
 	- count the number of mistakes in taxa
 
-## 4. Summary of comparisons
+## 4. Summary of comparisons (in planning phase)
 ### Input
 Comparison files of each directory inside the specified generated_data directory
 ### Output
@@ -61,7 +61,7 @@ File with statistics over all comparisons to do a quality analysis of the model 
 	- count the number of mistakes in distances
 	- count the number of mistakes in taxa
 
-## 5. Shell script for the complete pipeline
+## 5. Shell script for the complete pipeline (in planning phase)
 This script combines all aforementioned steps in one script. The purpose of this script is to precisely check the quality of the AI generated outputs 
 ### General idea
 - calls data generation code, newick encoding code and the comparison code
