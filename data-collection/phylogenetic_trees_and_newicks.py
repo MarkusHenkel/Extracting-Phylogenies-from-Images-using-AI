@@ -147,9 +147,8 @@ def create_output_directory(newick_taxa, path, file_id):
         os.makedirs(path)
     tree_to_image_file(newick_taxa, path, file_id)
     newick_path = path + f"\\newick_{file_id}.nwk"
-    nwk_file = open(newick_path, "w")
-    nwk_file.write(newick_taxa)
-    nwk_file.close() 
+    with open(newick_path, "w") as nwk_file:
+        nwk_file.write(newick_path)
 
 def main():
     argument_parser = argparse.ArgumentParser(
