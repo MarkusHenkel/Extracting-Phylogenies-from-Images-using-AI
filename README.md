@@ -26,7 +26,7 @@ Directory containing a text file with the newick inside and an image file contai
 This part is made as its own module with the intention that the pipeline as a whole works with different models. This way different models can be used and their results can be compared easily.
 
 ### Input
-Directory containing an image of the phylogenetic tree and a text file containing the newick string and one of these models: 
+Directory containing an image of the phylogenetic tree and a text file containing the newick string and one of these models: GPT-4o, GPT-4.1, o4-mini or ChatGPT-4o.
 ### Output
 The input directory updated with a text file with the generated newick string  
 ### General idea
