@@ -2,10 +2,11 @@ import os
 import base64
 import argparse
 import re
-# from openai import OpenAI
+from openai import OpenAI
+import datetime
 
 # environment variable for api key safety
-# client = OpenAI(api_key=$...)
+client = OpenAI(api_key = os.getenv("BA_API_KEY"))
 
 def get_image_from_directory(dir_path):
     """
@@ -19,9 +20,9 @@ def get_image_from_directory(dir_path):
     """
     image_path = ""
     if not os.path.exists(dir_path):
-        exit("Path does not exist.") 
+        exit(f"[{datetime.datetime.now()}] Error: Path does not exist.") 
     elif not os.path.isdir(dir_path):
-        exit("Path is not a directory.")
+        exit(f"[{datetime.datetime.now()}] Error: Path is not a directory.")
     else:
         for image in os.listdir(dir_path):
             if image.endswith(".png") or image.endswith(".jpg") or image.endswith(".jpeg"):
@@ -46,13 +47,12 @@ def get_file_id(dir_path):
     """
     image_path = get_image_from_directory(dir_path)
     match_obj = re.search(r"(?<=_)\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}-\d{6}(?=[.jpg,.png,.jpeg])", image_path)
-    if match_obj == None:
-        return ""
-    else:
+    if not match_obj == None:
         file_id = match_obj.group()
         return file_id
-    
-    
+    else: 
+        return ""
+        
 # Function to encode the image
 def encode_image(image_path):
     with open(image_path, "rb") as image_file:
@@ -75,30 +75,36 @@ def write_newick_into_dir(newick, dir_path, *file_id):
             newick_path = dir_path + f"\\generated_newick_{file_id}.nwk"
         else:
             newick_path = dir_path + f"\\generated_newick.nwk"
-            with open(newick_path, "w") as nwk_file:
-                nwk_file.write(newick_path)
-        
-# TODO: implement method that given a image/actual_newick dictionary and a preferred model uses the model to turn
-# the image to the generated newick so that the new dictionary contains generated_newick/actual_newick pairs
-# def create_response(image_path, model="gpt-4.1"):
-#     completion = client.chat.completions.create(
-#         model=model,
-#         messages=[
-#             {
-#                 "role": "user",
-#                 "content": [
-#                     { "type": "text", "text": "what's in this image?" },
-#                     {
-#                         "type": "image_url",
-#                         "image_url": {
-#                             "url": f"data:image/jpeg;base64,{base64_image}",
-#                         },
-#                     },
-#                 ],
-#             }
-#         ],
-#     )
-#     return completion.choices[0].message.content 
+        with open(newick_path, "w") as nwk_file:
+            nwk_file.write(newick)
+# TODO: find the image type (png, jpg, jpeg) and put it into the image_url string at data:image/{image_type};base64...
+def create_response(image_path, model="gpt-4.1"):
+    """
+    Given a path to an image (png, jpg or jpeg) and a OpenAI model creates a response 
+
+    Args:
+        image_path (str): path to the image
+        model (str, optional): OpenAI model that is used. Defaults to "gpt-4.1".
+
+    Returns:
+        _type_: _description_
+    """
+    prompt = "This is a phylogenetic tree with taxa and distances that aren't biologically accurate. Reply only with the tree in newick format. Make sure the Newick string includes the correct taxon names and all distances."
+    b64_image = encode_image(image_path)
+    response = client.responses.create(
+        model=model,
+        instructions="You are encoding phylogenetic images into Newick format and reply with just the Newick string.",
+        input=[
+            {
+                "role": "user", 
+                "content": [
+                    { "type": "input_text", "text": prompt},
+                    { "type": "input_image", "image_url": f"data:image/png;base64,{b64_image}"},
+                ],
+            }
+        ],
+    )
+    return response.output_text
 
 def main():
     argument_parser = argparse.ArgumentParser(
@@ -107,12 +113,12 @@ def main():
     #
     # Arguments
     #
-    
+    # TODO: add optional -o outfile_newick argument to let the user choose where to save the newick, make given path to directory the default value
     # argument for passing the path where the newick/image pair is saved at
     argument_parser.add_argument('-p', '--path', required=True, type=str,
                                  help='Specify the path to the directory the image of the phylogenetic tree is saved at. In the same directory the AI-generated Newick will be saved at.')
     # argument for passing the preferred open ai model for generating the newick string 
-    argument_parser.add_argument('-m', '--model', required=False, type=str,
+    argument_parser.add_argument('-m', '--model', required=False, type=str, default="gpt-4.1",
                                  help='Choose which OpenAI model is used in the generation of the newick string. Choose from GPT-4o, GPT-4.1, o4-mini and ChatGPT-4o. Default model used is GPT-4.1.')
     
     # Specified parameters
@@ -120,10 +126,16 @@ def main():
     path = args.path
     model = args.model 
     image_path = get_image_from_directory(path)
-    print("Given image: " + str(image_path))
-    print("Used model: " + model)
-    # generated_newick = create_response(image_path=image_path, model=model)
+    print(f"[{datetime.datetime.now()}] Given image: " + str(image_path))
+    print(f"[{datetime.datetime.now()}] Used model: " + model)
+    generated_newick = create_response(image_path=image_path, model=model)
+    print(f"[{datetime.datetime.now()}] Newick was generated.")
     # write_newick_into_dir(generated_newick, path, get_file_id(path))
+    write_newick_into_dir(generated_newick, path)
+    print(f"[{datetime.datetime.now()}] Newick was saved to file.")
     
 # execute the main method
 main()
+
+# path to test directory for testing
+# Random distances (0.00 and 20.00), 20 taxa: "C:\Users\marku\Desktop\StudiumVault\Semester6\Bachelorarbeit\Code\Extracting-Phylogenies-from-Images-using-AI\data-collection\20_taxa_rand_distances"
