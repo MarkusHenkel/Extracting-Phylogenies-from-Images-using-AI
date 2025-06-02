@@ -65,12 +65,13 @@ def generate_newick_tree(valid_rand_taxa):
 
 def tree_to_image_file(newick, path, file_id):
     """
-    Given a newick tree as a string, generates an image of the newick tree and saves it to the specified path.
+    Given a newick tree as a string, generates an image of the newick tree and saves it to the specified path with the specified file_id.
     Draws the tree using bio.phylo and matplotlib therefore must first be made into a newick file.
 
     Args:
         newick (str): newick string of the phylogenetic tree to be created
         path (str): path where the file is saved  
+        file_id (str): file ID 
     """
     # make the the newick tree (string) into a file so that it can be drawn by bio.phylo (not elegant?)
     newick_file = StringIO(newick)
