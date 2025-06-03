@@ -4,6 +4,7 @@ import argparse
 import re
 from openai import OpenAI
 import datetime
+from argparse import RawTextHelpFormatter
 
 # environment variable for api key safety
 client = OpenAI(api_key = os.getenv("BA_API_KEY"))
@@ -78,7 +79,7 @@ def write_newick_into_dir(newick, dir_path, *file_id):
         with open(newick_path, "w") as nwk_file:
             nwk_file.write(newick)
 # TODO: find the image type (png, jpg, jpeg) and put it into the image_url string at data:image/{image_type};base64...
-def create_response(image_path, model="gpt-4.1"):
+def generate_newick_from_image(image_path, model="gpt-4.1"):
     """
     Given a path to an image (png, jpg or jpeg) and a OpenAI model creates a response 
 
@@ -108,14 +109,24 @@ def create_response(image_path, model="gpt-4.1"):
 
 def main():
     argument_parser = argparse.ArgumentParser(
-        description="Newick encoding of images containing phylogenetic trees using AI"
+        description="""Newick encoding of images containing phylogenetic trees using AI. \n
+        Modes:\n
+        \tgenerate_newick: You can either provide a single directory with an image or the path to your image + the path where the image is saved at. \n 
+        \tIf you provide just the directory then the first image found in the directory will be used and the resulting newick saved into this directory.""",
+        formatter_class=RawTextHelpFormatter
     )
     #
     # Arguments
     #
-    # TODO: add optional -o outfile_newick argument to let the user choose where to save the newick, make given path to directory the default value
     # argument for passing the path where the newick/image pair is saved at
-    argument_parser.add_argument('-p', '--path', required=True, type=str,
+    argument_parser.add_argument("--mode", required=True, choices=["generate_newick"], 
+                                 help="Specify which functionality you want to use.")
+    argument_parser.add_argument('-d', '--directory_path', required=False, type=str,
+                                 help="""Specify the path to the directory the image of the phylogenetic tree is saved at. \n 
+                                 If you specify a directory the directory will be searched for an image and the AI-generated Newick will be saved at this directory.""")
+    argument_parser.add_argument("-i", "--image_path", required=False, type=str,
+                                 help="Specify the path where the image of the phylogenetic tree is saved at.")
+    argument_parser.add_argument('-o', '--outfile_path', required=False, type=str,
                                  help='Specify the path to the directory the image of the phylogenetic tree is saved at. In the same directory the AI-generated Newick will be saved at.')
     # argument for passing the preferred open ai model for generating the newick string 
     argument_parser.add_argument('-m', '--model', required=False, type=str, default="gpt-4.1",
@@ -123,16 +134,23 @@ def main():
     
     # Specified parameters
     args = argument_parser.parse_args()
-    path = args.path
+    directory_path = args.directory_path
     model = args.model 
-    image_path = get_image_from_directory(path)
-    print(f"[{datetime.datetime.now()}] Given image: " + str(image_path))
-    print(f"[{datetime.datetime.now()}] Used model: " + model)
-    generated_newick = create_response(image_path=image_path, model=model)
-    print(f"[{datetime.datetime.now()}] Newick was generated.")
-    # write_newick_into_dir(generated_newick, path, get_file_id(path))
-    write_newick_into_dir(generated_newick, path)
-    print(f"[{datetime.datetime.now()}] Newick was saved to file.")
+    mode = args.mode
+    outfile_path = args.outfile_path
+    image_path = args.image_path
+    if directory_path:
+        generated_image_path = get_image_from_directory(directory_path)
+    if mode == "generate_newick":
+        if not directory_path or not (image_path and outfile_path):
+            exit(f"[{datetime.datetime.now()}] When using '--mode generate_newick' either provide a directory with an image or infile and outfile path. ")
+        print(f"[{datetime.datetime.now()}] Given image: " + str(generated_image_path))
+        print(f"[{datetime.datetime.now()}] Used model: " + model)
+        generated_newick = generate_newick_from_image(image_path=generated_image_path, model=model)
+        print(f"[{datetime.datetime.now()}] Newick was generated.")
+        # write_newick_into_dir(generated_newick, path, get_file_id(path))
+        write_newick_into_dir(generated_newick, directory_path)
+        print(f"[{datetime.datetime.now()}] Newick was saved to file.")
     
 # execute the main method
 main()
