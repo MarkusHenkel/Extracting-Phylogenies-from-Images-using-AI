@@ -63,27 +63,37 @@ def taxids_to_taxa(valid_rand_taxids):
 def generate_newick_tree(valid_rand_taxa):
     return ncbi.get_topology(valid_rand_taxa).write()
 
-def tree_to_image_file(newick, path, file_id):
+def save_newick_image(newick, file_name = None, outfile_path = None):
     """
-    Given a newick tree as a string, generates an image of the newick tree and saves it to the specified path with the specified file_id.
-    Draws the tree using bio.phylo and matplotlib therefore must first be made into a newick file.
+    Given a newick tree as a string, generates an image of the newick tree and saves it to the specified path. If no path is specified it will instead 
+    save the image to the current directory. If no file name is provided the image in the current directory will be called "tree.jpg".
+    If the path contains directories that dont exist, they will be created. If no valid file extension is used, the image will be a .jpg.
 
     Args:
         newick (str): newick string of the phylogenetic tree to be created
-        path (str): path where the file is saved  
-        file_id (str): file ID 
+        outfile_path (str): path to where the image is saved at
+        file_name (str): Name of the file if no outfile_path was specified
     """
-    # make the the newick tree (string) into a file so that it can be drawn by bio.phylo (not elegant?)
-    newick_file = StringIO(newick)
-    newick_tree = Phylo.read(newick_file, "newick")
+    # make the the newick tree (string) into a file so that it can be drawn by bio.phylo 
+    newick_tree = Phylo.read(StringIO(newick), "newick")
     # create a matplotlib figure and 
-    fig = plt.figure(figsize=(10, 20), dpi=150)
+    fig = plt.figure(figsize=(30, 20), dpi=150)
     axes = fig.add_subplot(1, 1, 1)
     newick_tree.rooted = True
     Phylo.draw(newick_tree, axes=axes, do_show=False)
-    image_path = path + f"\\tree_{file_id}.jpg" 
-    # print("Test path: " + image_path)
-    plt.savefig(image_path)
+    if outfile_path:
+        if not os.path.exists(outfile_path):
+            os.makedirs(outfile_path, exist_ok=True)
+            plt.savefig(outfile_path) 
+        else: 
+            plt.savefig(outfile_path)
+    elif file_name: 
+        if not file_name.endswith(".jpg") or file_name.endswith(".png") or file_name.endswith(".jpeg") or file_name.endswith(".pdf") or file_name.endswith(".svg"):
+            plt.savefig(file_name + ".jpg")
+        else: 
+            plt.savefig(file_name)
+    else:
+        plt.savefig(f"tree.jpg")
     plt.close()
 
 def taxids_from_newick(newick_string):
@@ -134,91 +144,94 @@ def randomize_distances(newick_string, max_distance):
         newick_string)
     return newick_string
     
-def create_output_directory(newick_taxa, path, file_id):
+def create_output_directory(newick_taxa, outdirectory_path, file_id):
     """
     Given the completely processed newick string creates a directory with at specified path where a folder with the 
     image and the newick string and a specified file ID that is appended to the end of the directory name
 
     Args:
         newick_taxa (_type_): _description_
-        path (_type_): _description_
+        outdirectory_path (_type_): _description_
         file_id (_type_): _description_
     """
-    if not os.path.exists(path):
-        os.makedirs(path)
-    tree_to_image_file(newick_taxa, path, file_id)
-    newick_path = path + f"\\newick_{file_id}.nwk"
+    if not os.path.exists(outdirectory_path):
+        os.makedirs(outdirectory_path)
+    newick_path = outdirectory_path + f"\\newick_{file_id}.nwk"
+    # save the newick image
+    save_newick_image(newick_taxa, newick_path)
+    # save the .nwk
     with open(newick_path, "w") as nwk_file:
         nwk_file.write(newick_taxa)
 
 def main():
-    argument_parser = argparse.ArgumentParser(
-        description="Data Collection for Extracting phylogenies from images using AI"
-    )
-    #
-    # Arguments
-    #
-    
-    # parameter for the preferred number of taxa generated, if not specified defaults to 10 taxa
-    argument_parser.add_argument('-a', '--amount_taxa', required=False, type=int,
-                                 help='Type=Int. Choose the preferred amount of generated taxa. If not specified defaults to 10 taxa.')
-    argument_parser.add_argument('-ra', '--randomize_amount', required=False, action='store_true',
-                                 help='On/Off flag. Randomizes the amount of taxa generated. Range: 2 to <amount_taxa>. Per default the amount of taxa is not randomized.')
-    argument_parser.add_argument('-rd', '--randomize_distances', required=False, type=int,
-                                 help='Type=Int. If an Integer is specified the distances between taxa are randomized between 0.00 and the specified number. Per default all distances are set to 1.')
-    
-    # Specified parameters
-    args = argument_parser.parse_args()
-    
-    #
-    # Main functionality
-    #
-    
-    # if the amount of taxa is not specified it defaults to 10 taxa
-    amount_taxa = args.amount_taxa
-    randomize_amount = args.randomize_amount
-    max_distance = args.randomize_distances
-    
-    # if amount of taxa and randomize_amount are specified then call generate_random_taxids() with the amount of taxa and randomize set to True
-    random_taxids = []
-    # -a and -r specified
-    if amount_taxa != None and randomize_amount == True:
-        random_taxids = generate_random_taxids(amount=amount_taxa, randomize=True)
-        newick_taxids = generate_newick_tree(random_taxids)
-        newick_taxa = translate_newick_tree(newick_taxids)
-    # -a specified, -r=False
-    elif amount_taxa != None and randomize_amount == False:
-        random_taxids = generate_random_taxids(amount=amount_taxa)
-        newick_taxids = generate_newick_tree(random_taxids)
-        newick_taxa = translate_newick_tree(newick_taxids)
-    # -r specified, -a=None
-    elif amount_taxa == None and randomize_amount == True:
-        random_taxids = generate_random_taxids(randomize=True)
-        newick_taxids = generate_newick_tree(random_taxids)
-        newick_taxa = translate_newick_tree(newick_taxids)
-    # neither specified, -a=None, -r=False
-    else:
-        random_taxids = generate_random_taxids()
-        newick_taxids = generate_newick_tree(random_taxids)
-        newick_taxa = translate_newick_tree(newick_taxids)
-    
-    # randomize the distances if a max distance is specified
-    if max_distance != None:
-        newick_taxa = randomize_distances(newick_taxa, max_distance)
-    
-    # 
-    # Generation of output
-    #
-    time = str(datetime.datetime.now().strftime(r"%Y-%m-%d-%H-%M-%S-%f"))
-    print("Data generation for extracting phylogenies from images using AI.")
-    print("Run at: "+ str(datetime.datetime.now()))
-    print("File ID: "+ time)
-    print(f"Parameters:\n  Randomize distances: {str(False if max_distance == None else True)}\n  Max distance: {max_distance if max_distance != None else 1}")
-    print(f"  Specified amount of taxa: {amount_taxa}\n  Actual amount of taxa: {len(random_taxids)}")
-    print(f"Newick tree:\n{newick_taxa}")
-    file_id = time
-    path = str(pathlib.Path(__file__).parent.resolve()) + f"\\generated_data\\data_{time}"
-    create_output_directory(newick_taxa, path, file_id)
+    if __name__ == '__main__': 
+        argument_parser = argparse.ArgumentParser(
+            description="Data Collection for Extracting phylogenies from images using AI"
+        )
+        #
+        # Arguments
+        #
+        
+        # parameter for the preferred number of taxa generated, if not specified defaults to 10 taxa
+        argument_parser.add_argument('-a', '--amount_taxa', required=False, type=int,
+                                    help='Type=Int. Choose the preferred amount of generated taxa. If not specified defaults to 10 taxa.')
+        argument_parser.add_argument('-ra', '--randomize_amount', required=False, action='store_true',
+                                    help='On/Off flag. Randomizes the amount of taxa generated. Range: 2 to <amount_taxa>. Per default the amount of taxa is not randomized.')
+        argument_parser.add_argument('-rd', '--randomize_distances', required=False, type=int,
+                                    help='Type=Int. If an Integer is specified the distances between taxa are randomized between 0.00 and the specified number. Per default all distances are set to 1.')
+        
+        # Specified parameters
+        args = argument_parser.parse_args()
+        
+        #
+        # Main functionality
+        #
+        
+        # if the amount of taxa is not specified it defaults to 10 taxa
+        amount_taxa = args.amount_taxa
+        randomize_amount = args.randomize_amount
+        max_distance = args.randomize_distances
+        
+        # if amount of taxa and randomize_amount are specified then call generate_random_taxids() with the amount of taxa and randomize set to True
+        random_taxids = []
+        # -a and -r specified
+        if amount_taxa != None and randomize_amount == True:
+            random_taxids = generate_random_taxids(amount=amount_taxa, randomize=True)
+            newick_taxids = generate_newick_tree(random_taxids)
+            newick_taxa = translate_newick_tree(newick_taxids)
+        # -a specified, -r=False
+        elif amount_taxa != None and randomize_amount == False:
+            random_taxids = generate_random_taxids(amount=amount_taxa)
+            newick_taxids = generate_newick_tree(random_taxids)
+            newick_taxa = translate_newick_tree(newick_taxids)
+        # -r specified, -a=None
+        elif amount_taxa == None and randomize_amount == True:
+            random_taxids = generate_random_taxids(randomize=True)
+            newick_taxids = generate_newick_tree(random_taxids)
+            newick_taxa = translate_newick_tree(newick_taxids)
+        # neither specified, -a=None, -r=False
+        else:
+            random_taxids = generate_random_taxids()
+            newick_taxids = generate_newick_tree(random_taxids)
+            newick_taxa = translate_newick_tree(newick_taxids)
+        
+        # randomize the distances if a max distance is specified
+        if max_distance != None:
+            newick_taxa = randomize_distances(newick_taxa, max_distance)
+        
+        # 
+        # Generation of output
+        #
+        time = str(datetime.datetime.now().strftime(r"%Y-%m-%d-%H-%M-%S-%f"))
+        print("Data generation for extracting phylogenies from images using AI.")
+        print("Run at: "+ str(datetime.datetime.now()))
+        print("File ID: "+ time)
+        print(f"Parameters:\n  Randomize distances: {str(False if max_distance == None else True)}\n  Max distance: {max_distance if max_distance != None else 1}")
+        print(f"  Specified amount of taxa: {amount_taxa}\n  Actual amount of taxa: {len(random_taxids)}")
+        print(f"Newick tree:\n{newick_taxa}")
+        file_id = time
+        path = str(pathlib.Path(__file__).parent.resolve()) + f"\\generated_data\\data_{time}"
+        create_output_directory(newick_taxa, path, file_id)
     
 # execute the main method
 main()
