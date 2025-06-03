@@ -78,7 +78,22 @@ def write_newick_into_dir(newick, dir_path, *file_id, model):
             newick_path = dir_path + f"\\generated_newick_{model}.nwk"
         with open(newick_path, "w") as nwk_file:
             nwk_file.write(newick)
-# TODO: find the image type (png, jpg, jpeg) and put it into the image_url string at data:image/{image_type};base64...
+            
+def get_image_format(image_path):
+    """
+    Using regex matches 2-4 chars between a '.' and a '"' of a string and returns the matched string if it is either jpeg, png or jpg
+
+    Args:
+        image_path (str): path of the file
+
+    Returns:
+        str: image file format
+    """
+    if (file_ending := re.search(r"(?<=\.).{2,4}(?=['\"])", image_path)) in ["jpeg", "png", "jpg"]:
+        return file_ending
+    else:
+        exit(f"[{datetime.datetime.now}] Error in get_image_format: Given file path does not end with .jpeg, .png or .jpg.")
+        
 def generate_newick_from_image(image_path, model="gpt-4.1"):
     """
     Given a path to an image (png, jpg or jpeg) and a OpenAI model creates a response 
@@ -100,7 +115,7 @@ def generate_newick_from_image(image_path, model="gpt-4.1"):
                 "role": "user", 
                 "content": [
                     { "type": "input_text", "text": prompt},
-                    { "type": "input_image", "image_url": f"data:image/png;base64,{b64_image}"},
+                    { "type": "input_image", "image_url": f"data:image/{get_image_format(image_path)};base64,{b64_image}"},
                 ],
             }
         ],
