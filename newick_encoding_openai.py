@@ -21,9 +21,9 @@ def get_image_from_directory(dir_path):
     """
     image_path = ""
     if not os.path.exists(dir_path):
-        exit(f"[{datetime.datetime.now()}] Error: Path does not exist.") 
+        exit(f"[{datetime.datetime.now()}] Error in get_image_from_directory: Path does not exist.") 
     elif not os.path.isdir(dir_path):
-        exit(f"[{datetime.datetime.now()}] Error: Path is not a directory.")
+        exit(f"[{datetime.datetime.now()}] Error in get_image_from_directory: Path is not a directory.")
     else:
         for image in os.listdir(dir_path):
             if image.endswith(".png") or image.endswith(".jpg") or image.endswith(".jpeg"):
@@ -59,7 +59,7 @@ def encode_image(image_path):
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode("utf-8")
 
-def write_newick_into_dir(newick, dir_path, *file_id):
+def write_newick_into_dir(newick, dir_path, *file_id, model):
     """
     Given a newick string and a path to a directory writes the given string to a .nwk and saves it into the specified directory.
     If given a file ID it is attached to the file name of the .nwk 
@@ -68,14 +68,14 @@ def write_newick_into_dir(newick, dir_path, *file_id):
         dir_path (str): path to a directory
     """
     if not os.path.exists(dir_path):
-        exit("Path does not exist.") 
+        exit(f"[{datetime.datetime.now}] Error in write_newick_into_dir: Path does not exist.") 
     elif not os.path.isdir(dir_path):
-        exit("Path is not a directory.")
+        exit(f"[{datetime.datetime.now}] Error in write_newick_into_dir: Path is not a directory.")
     else:
         if file_id:
-            newick_path = dir_path + f"\\generated_newick_{file_id}.nwk"
+            newick_path = dir_path + f"\\generated_newick_{model}_{file_id}.nwk"
         else:
-            newick_path = dir_path + f"\\generated_newick.nwk"
+            newick_path = dir_path + f"\\generated_newick_{model}.nwk"
         with open(newick_path, "w") as nwk_file:
             nwk_file.write(newick)
 # TODO: find the image type (png, jpg, jpeg) and put it into the image_url string at data:image/{image_type};base64...
@@ -119,7 +119,7 @@ def main():
     # Arguments
     #
     # argument for passing the path where the newick/image pair is saved at
-    argument_parser.add_argument("--mode", required=True, choices=["generate_newick"], 
+    argument_parser.add_argument("--mode", required=True, choices=["encode_image"], 
                                  help="Specify which functionality you want to use.")
     argument_parser.add_argument('-d', '--directory_path', required=False, type=str,
                                  help="""Specify the path to the directory the image of the phylogenetic tree is saved at. \n 
@@ -139,19 +139,28 @@ def main():
     mode = args.mode
     outfile_path = args.outfile_path
     image_path = args.image_path
-    if directory_path:
-        generated_image_path = get_image_from_directory(directory_path)
-    if mode == "generate_newick":
-        if not directory_path or not (image_path and outfile_path):
+    # Mode: generation of newick
+    if mode == "encode_image":
+        if not (directory_path or (image_path and outfile_path)):
             exit(f"[{datetime.datetime.now()}] When using '--mode generate_newick' either provide a directory with an image or infile and outfile path. ")
-        print(f"[{datetime.datetime.now()}] Given image: " + str(generated_image_path))
-        print(f"[{datetime.datetime.now()}] Used model: " + model)
-        generated_newick = generate_newick_from_image(image_path=generated_image_path, model=model)
-        print(f"[{datetime.datetime.now()}] Newick was generated.")
-        # write_newick_into_dir(generated_newick, path, get_file_id(path))
-        write_newick_into_dir(generated_newick, directory_path)
-        print(f"[{datetime.datetime.now()}] Newick was saved to file.")
-    
+        # generation of newick if a path to a directory was given (get image from directory and save newick to the same directory)
+        if directory_path:
+            image_from_dir = get_image_from_directory(directory_path)
+            print(f"[{datetime.datetime.now()}] Given image: " + str(image_from_dir))
+            print(f"[{datetime.datetime.now()}] Used model: " + model)
+            generated_newick = generate_newick_from_image(image_path=image_from_dir, model=model)
+            print(f"[{datetime.datetime.now()}] Newick was generated.")
+            write_newick_into_dir(generated_newick, directory_path)
+            print(f"[{datetime.datetime.now()}] Newick was saved to file.")
+        # generation of newick if path to image and path to outfile was given 
+        elif image_path and outfile_path:
+            print(f"[{datetime.datetime.now()}] Given image: " + str(image_path))
+            print(f"[{datetime.datetime.now()}] Used model: " + model)
+            generated_newick = generate_newick_from_image(image_path=image_path, model=model)
+            print(f"[{datetime.datetime.now()}] Newick was generated.")
+            write_newick_into_dir(generated_newick, outfile_path, model)
+            print(f"[{datetime.datetime.now()}] Newick was saved to file: ")
+            
 # execute the main method
 main()
 
