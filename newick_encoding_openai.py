@@ -68,9 +68,9 @@ def write_newick_into_dir(newick, dir_path, *file_id, model):
         dir_path (str): path to a directory
     """
     if not os.path.exists(dir_path):
-        exit(f"[{datetime.datetime.now}] Error in write_newick_into_dir: Path does not exist.") 
+        exit(f"[{datetime.datetime.now()}] Error in write_newick_into_dir: Path does not exist.") 
     elif not os.path.isdir(dir_path):
-        exit(f"[{datetime.datetime.now}] Error in write_newick_into_dir: Path is not a directory.")
+        exit(f"[{datetime.datetime.now()}] Error in write_newick_into_dir: Path is not a directory.")
     else:
         if file_id:
             newick_path = dir_path + f"\\generated_newick_{model}_{file_id}.nwk"
@@ -78,10 +78,23 @@ def write_newick_into_dir(newick, dir_path, *file_id, model):
             newick_path = dir_path + f"\\generated_newick_{model}.nwk"
         with open(newick_path, "w") as nwk_file:
             nwk_file.write(newick)
+        
+def write_newick_to_file(newick, outfile_path):
+    """
+    Counterpart to write_newick_into_dir where instead of in a dir the newick is written into its own file.
+
+    Args:
+        outfile_path (str): path where newick is supposed to be saved at
+    """
+    if os.path.exists(outfile_path):
+        exit(f"[{datetime.datetime.now()}] Error in write_newick_to_file: File already exists.") 
+    else:
+        with open(outfile_path, "w") as nwk_file:
+            nwk_file.write(newick)
             
 def get_image_format(image_path):
     """
-    Using regex matches 2-4 chars between a '.' and a '"' of a string and returns the matched string if it is either jpeg, png or jpg
+    Using regex matches 2-4 chars between a '.' and a " or ' of a string and returns the matched string if it is either jpeg, png or jpg
 
     Args:
         image_path (str): path of the file
@@ -89,22 +102,26 @@ def get_image_format(image_path):
     Returns:
         str: image file format
     """
-    if (file_ending := re.search(r"(?<=\.).{2,4}(?=['\"])", image_path)) in ["jpeg", "png", "jpg"]:
+    if not re.search(r"(?<=\.)\w{3,4}$", image_path):
+        exit(f"[{datetime.datetime.now()}] Error in get_image_format: Given path doesn't have a file ending.")
+    elif (file_ending := re.search(r"(?<=\.)\w{3,4}$", image_path).group()) in ["jpeg", "png", "jpg"]:
         return file_ending
     else:
-        exit(f"[{datetime.datetime.now}] Error in get_image_format: Given file path does not end with .jpeg, .png or .jpg.")
+        exit(f"[{datetime.datetime.now()}] Error in get_image_format: Given file path does not end with .jpeg, .png or .jpg.")
         
 def generate_newick_from_image(image_path, model="gpt-4.1"):
     """
-    Given a path to an image (png, jpg or jpeg) and a OpenAI model creates a response 
+    Given a path to an image (png, jpg or jpeg) and a OpenAI model generates the corresponding newick  
 
     Args:
         image_path (str): path to the image
         model (str, optional): OpenAI model that is used. Defaults to "gpt-4.1".
 
     Returns:
-        _type_: _description_
+        str: response text by the model
     """
+    if not model in ["gpt-4.1", "o4-mini", "gpt-4o"]:
+        exit(f"[{datetime.datetime.now()}] Error in generate_newick_from_image: Given model is not supported. Please choose from gpt-4.1, o4-mini or gpt-4o")
     prompt = "This is a phylogenetic tree with taxa and distances that aren't biologically accurate. Reply only with the tree in newick format. Make sure the Newick string includes the correct taxon names and all distances."
     b64_image = encode_image(image_path)
     response = client.responses.create(
@@ -144,8 +161,8 @@ def main():
     argument_parser.add_argument('-o', '--outfile_path', required=False, type=str,
                                  help='Specify the path to the directory the image of the phylogenetic tree is saved at. In the same directory the AI-generated Newick will be saved at.')
     # argument for passing the preferred open ai model for generating the newick string 
-    argument_parser.add_argument('-m', '--model', required=False, type=str, default="gpt-4.1",
-                                 help='Choose which OpenAI model is used in the generation of the newick string. Choose from GPT-4o, GPT-4.1, o4-mini and ChatGPT-4o. Default model used is GPT-4.1.')
+    argument_parser.add_argument('-m', '--model', required=False, choices=["gpt-4o", "gpt-4.1", "o4-mini"], type=str, default="gpt-4.1",
+                                 help='Choose which OpenAI model is used in the generation of the newick string. Choose from GPT-4o, GPT-4.1 or o4-mini. Default model used is GPT-4.1.')
     
     # Specified parameters
     args = argument_parser.parse_args()
@@ -165,16 +182,16 @@ def main():
             print(f"[{datetime.datetime.now()}] Used model: " + model)
             generated_newick = generate_newick_from_image(image_path=image_from_dir, model=model)
             print(f"[{datetime.datetime.now()}] Newick was generated.")
-            write_newick_into_dir(generated_newick, directory_path)
+            write_newick_into_dir(generated_newick, directory_path, model=model)
             print(f"[{datetime.datetime.now()}] Newick was saved to file.")
         # generation of newick if path to image and path to outfile was given 
         elif image_path and outfile_path:
             print(f"[{datetime.datetime.now()}] Given image: " + str(image_path))
             print(f"[{datetime.datetime.now()}] Used model: " + model)
             generated_newick = generate_newick_from_image(image_path=image_path, model=model)
-            print(f"[{datetime.datetime.now()}] Newick was generated.")
-            write_newick_into_dir(generated_newick, outfile_path, model)
-            print(f"[{datetime.datetime.now()}] Newick was saved to file: ")
+            print(f"[{datetime.datetime.now()}] Newick was generated using {model}")
+            write_newick_to_file(outfile_path=outfile_path, newick=generated_newick)
+            print(f"[{datetime.datetime.now()}] Newick was saved to {image_path}")
             
 # execute the main method
 main()
