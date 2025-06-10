@@ -1,5 +1,6 @@
 from Bio import Phylo
 from ete3 import NCBITaxa
+from ete3 import Tree
 from io import StringIO 
 from numpy import random
 import datetime
@@ -60,8 +61,11 @@ def taxids_to_taxa(valid_rand_taxids):
     return valid_rand_taxa
 
 # Given a list of random valid taxa generates its topology and returns its newick tree as a string
+# Formatting issue? Each clade receives a 1
 def generate_newick_tree(valid_rand_taxa):
-    return ncbi.get_topology(valid_rand_taxa).write()
+    newick = ncbi.get_topology(valid_rand_taxa).write()
+    newick = re.sub(r"(?<=\))\d", "", newick)
+    return newick
 
 def save_newick_image(newick, file_name = None, outfile_path = None, display_branch_lengths = True):
     """
@@ -90,15 +94,19 @@ def save_newick_image(newick, file_name = None, outfile_path = None, display_bra
             os.makedirs(os.path.dirname(outfile_path), exist_ok=True)
             plt.axis("off")
             plt.savefig(outfile_path, bbox_inches='tight') 
+            print(f"[{datetime.datetime.now()}] save_newick_image: Image was saved to newly created directory.")
         else: 
             plt.savefig(outfile_path, bbox_inches='tight')
+            print(f"[{datetime.datetime.now()}] save_newick_image: Image was saved to specified directory.")
     elif file_name: 
         if not file_name.endswith(".jpg") or file_name.endswith(".png") or file_name.endswith(".jpeg") or file_name.endswith(".pdf") or file_name.endswith(".svg"):
             plt.axis("off")
             plt.savefig(file_name + ".jpg", bbox_inches='tight')
+            print(f"[{datetime.datetime.now()}] save_newick_image: Image was saved to specified file.")
         else: 
             plt.axis("off")
             plt.savefig(file_name, bbox_inches='tight')
+            print(f"[{datetime.datetime.now()}] save_newick_image: Image was saved to specified file.")
     else:
         plt.axis("off")
         plt.savefig(f"tree.jpg", bbox_inches='tight')
@@ -137,8 +145,8 @@ def translate_newick_tree(newick_string):
 
 def randomize_distances(newick_string, max_distance):
     """
-    Given a newick tree and a max distance returns the newick tree with randomized distances. Also works on 
-    Randomized distances are rounded to 2 decimal and are in the range from 0.00 to the specified max amount
+    Given a newick tree and a max distance returns the newick tree with randomized distances. 
+    Randomized distances are rounded to 2 decimal and are in the range from 0.00 to the specified max amount.
 
     Args:
         newick_string (str): The tree in newick format
@@ -146,32 +154,32 @@ def randomize_distances(newick_string, max_distance):
     """
     # if re.sub() is given a lambda it tries to give the match object to the lambda but the lambda doesnt take any inputs
     # and instead generates a new random float each time a match is found
+    
     newick_string = re.sub(
-        r"(?<=[:)])\d+",
+        r"(?<=:)\d+",
         lambda _: str(round(random.uniform(max_distance), 2)),
         newick_string)
     return newick_string
     
 def create_output_directory(newick_taxa, outdirectory_path, file_id, display_branch_lengths):
     """
-    Given the completely processed newick string creates a directory with at specified path where a folder with the 
+    Given the newick with taxa (not taxIDs) string creates a directory with at specified path where a folder with the 
     image and the newick string and a specified file ID that is appended to the end of the directory name
 
     Args:
-        newick_taxa (_type_): _description_
-        outdirectory_path (_type_): _description_
-        file_id (_type_): _description_
+        newick_taxa (str): newick string with taxa and distances 
+        outdirectory_path (str): path to the directory to be created
+        file_id (str): chosen file ID 
     """
     if not os.path.exists(outdirectory_path):
         os.makedirs(outdirectory_path)
-        print(f"[{datetime.datetime.now()}] Output directory created.")
+        print(f"[{datetime.datetime.now()}] create_output_directory: Directory wasn't found. New directory was created.")
     newick_path = outdirectory_path + f"\\newick_{file_id}.nwk"
     # save the newick image
     if display_branch_lengths:
-        save_newick_image(newick=newick_taxa, outfile_path=outdirectory_path + f"\\tree_{file_id}.jpg")
+        save_newick_image(newick=newick_taxa, outfile_path=outdirectory_path + f"\\image_tree_{file_id}.jpg")
     else:
-        save_newick_image(newick=newick_taxa, outfile_path=outdirectory_path + f"\\tree_{file_id}.jpg", display_branch_lengths=False)
-    print(f"[{datetime.datetime.now()}] Image was saved.")
+        save_newick_image(newick=newick_taxa, outfile_path=outdirectory_path + f"\\image_tree_{file_id}.jpg", display_branch_lengths=False)
     # save the .nwk
     with open(newick_path, "w") as nwk_file:
         nwk_file.write(newick_taxa)
@@ -195,6 +203,9 @@ def main():
                                     help='Type=Int. If an Integer is specified the distances between taxa are randomized between 0.00 and the specified number. Per default all distances are set to 1.')
         argument_parser.add_argument("-db", "--display_branch_lengths", required=False, action="store_true",
                                      help="On/Off flag. If specified then all branch lengths are added to the corresponding branch in the image. Per default all branch lengths are added.")
+        argument_parser.add_argument("-o", "--outfile_path", required=False, type=str,
+                                     help="""If specified the directory containing the Newick and the corresponding image will be saved to this path. If the path points to a directory that doesn't exist
+                                     it will be created.""")
         
         # Specified parameters
         args = argument_parser.parse_args()
@@ -208,6 +219,7 @@ def main():
         randomize_amount = args.randomize_amount
         max_distance = args.randomize_distances
         display_branch_lengths= args.display_branch_lengths
+        outfile_path = args.outfile_path
         
         # if amount of taxa and randomize_amount are specified then call generate_random_taxids() with the amount of taxa and randomize set to True
         random_taxids = []
@@ -251,11 +263,18 @@ def main():
               \t{newick_taxa}
               """)
         file_id = time
-        path = str(pathlib.Path(__file__).parent.resolve()) + f"\\generated_data\\data_{time}"
-        if display_branch_lengths:
-            create_output_directory(newick_taxa, path, file_id, display_branch_lengths=True)
+        # save directory to outfile path if it was specified. If not create the generated data directory with the data directory inside
+        if outfile_path:
+            if display_branch_lengths:
+                create_output_directory(newick_taxa, outfile_path, file_id, display_branch_lengths=True)
+            else:
+                create_output_directory(newick_taxa, outfile_path, file_id, display_branch_lengths=False)
         else:
-            create_output_directory(newick_taxa, path, file_id, display_branch_lengths=False)
+            path = str(pathlib.Path(__file__).parent.resolve()) + f"\\generated_data\\data_{time}"
+            if display_branch_lengths:
+                create_output_directory(newick_taxa, path, file_id, display_branch_lengths=True)
+            else:
+                create_output_directory(newick_taxa, path, file_id, display_branch_lengths=False)
     
 # execute the main method
 main()
