@@ -1,3 +1,4 @@
+from data_collection import phylogenetic_trees_and_newicks as ptan # writing the phylogenetic tree of the generated newick
 import os
 import base64
 import argparse
@@ -5,6 +6,7 @@ import re
 from openai import OpenAI
 import datetime
 from argparse import RawTextHelpFormatter
+from ete3 import Tree
 
 # environment variable for api key safety
 client = OpenAI(api_key = os.getenv("BA_API_KEY"))
@@ -59,7 +61,7 @@ def encode_image(image_path):
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode("utf-8")
 
-def write_newick_into_dir(newick, dir_path, *file_id, model):
+def write_newick_into_dir(newick, dir_path, model, file_id=None):
     """
     Given a newick string and a path to a directory writes the given string to a .nwk and saves it into the specified directory.
     If given a file ID it is attached to the file name of the .nwk 
@@ -73,9 +75,9 @@ def write_newick_into_dir(newick, dir_path, *file_id, model):
         exit(f"[{datetime.datetime.now()}] Error in write_newick_into_dir: Path is not a directory.")
     else:
         if file_id:
-            newick_path = dir_path + f"\\generated_newick_{model}_{file_id}.nwk"
+            newick_path = dir_path + f"\\generated_nwk_{model}_{file_id}.nwk"
         else:
-            newick_path = dir_path + f"\\generated_newick_{model}.nwk"
+            newick_path = dir_path + f"\\generated_nwk_{model}.nwk"
         with open(newick_path, "w") as nwk_file:
             nwk_file.write(newick)
         
@@ -109,9 +111,11 @@ def get_image_format(image_path):
     else:
         exit(f"[{datetime.datetime.now()}] Error in get_image_format: Given file path does not end with .jpeg, .png or .jpg.")
         
-def generate_newick_from_image(image_path, model="gpt-4.1"):
+def generate_newick_from_image_directly(image_path, model="gpt-4.1"):
     """
-    Given a path to an image (png, jpg or jpeg) and a OpenAI model generates the corresponding newick  
+    Given a path to an image (png, jpg or jpeg) and a OpenAI model returns the newick.
+    "Directly" refers to the fact that the AI is tasked with generating the Newick format directly instead of letting 
+    the AI write out the basic hierarchical structure of the image and then extracting the Newick from that manually.
 
     Args:
         image_path (str): path to the image
@@ -121,12 +125,16 @@ def generate_newick_from_image(image_path, model="gpt-4.1"):
         str: response text by the model
     """
     if not model in ["gpt-4.1", "o4-mini", "gpt-4o"]:
-        exit(f"[{datetime.datetime.now()}] Error in generate_newick_from_image: Given model is not supported. Please choose from gpt-4.1, o4-mini or gpt-4o")
-    prompt = "This is a phylogenetic tree with taxa and distances that aren't biologically accurate. Reply only with the tree in newick format. Make sure the Newick string includes the correct taxon names and all distances."
+        exit(f"[{datetime.datetime.now()}] Error in generate_newick_from_image_directly: Given model is not supported. Please choose from gpt-4.1, o4-mini or gpt-4o")
+    prompt = """This is a phylogenetic tree with taxa and distances. Make sure the Newick string includes the correct taxon names and all distances."""
+    instructions =  """You encode images of phylogenetic trees into Newick format.Respond only with the newick, nothing else.
+    Taxa are from the NCBI taxonomy, read them correctly and respond with a Newick with correct format. Format example: 
+    ((<taxon1>:<distance1>,<taxon2>:<distance2>):<clade_distance1>,<taxon3>=<distance3>);.
+    Make sure every opening parenthesis has a closing parenthesis."""
     b64_image = encode_image(image_path)
     response = client.responses.create(
         model=model,
-        instructions="You are encoding phylogenetic images into Newick format and reply with just the Newick string.",
+        instructions=instructions,
         input=[
             {
                 "role": "user", 
@@ -137,11 +145,67 @@ def generate_newick_from_image(image_path, model="gpt-4.1"):
             }
         ],
     )
-    return response.output_text
+    # parse the newick from the reponse
+    if re.search(r"\(.+;", response.output_text):
+        newick = re.search(r"\(.+;", response.output_text).group()
+        print(f"[{datetime.datetime.now()}] Generated Newick before postprocessing using AI:\n{newick}")
+    else:
+        exit(f"[{datetime.datetime.now()}] Error in generate_newick_format(): No Newick found in the response.")
+    # postprocess if newick formatting is wrong
+    if not ptan.is_newick(newick, 1):
+        print(f"[{datetime.datetime.now()}] generate_newick_from_image_directly: Formatting is wrong. Beginning postprocessing.")
+        newick = correct_newick(image_path, model)
+        # check if formatting is still wrong after postprocessing
+        if not ptan.is_newick(newick, 1):
+            print(f"[{datetime.datetime.now()}] generate_newick_from_image_directly: AI-Postprocessing failed.") 
+    else:
+        print(f"[{datetime.datetime.now()}] generate_newick_from_image_directly: Formatting is correct. Skipping AI-postprocessing.")
+    print(f"[{datetime.datetime.now()}] Generated Newick:\n{newick}")
+    return newick
+    
+def correct_newick(image_path, generated_newick, model="gpt-4.1"):
+    """
+    Given a newick with incorrect formatting and the original image, does a postprocessing step with focus on correcting spelling mistakes 
+    and mistakes in the newick formatting using the API once again
 
+    Args:
+        image_path (str): path to the orignal image
+        generated_newick (str): generated newick that needs postprocessing
+
+    Returns:
+        updated_newick: newick with improved spelling and formatting 
+    """
+    b64_image = encode_image(image_path)
+    prompt=f"""This is a phylogenetic tree and this the corresponding Newick: {generated_newick}. The Newick has spelling mistakes and the formatting is wrong. 
+    Give me the correct Newick."""
+    instructions = """You encode images of phylogenetic trees into Newick format. Respond only with the newick.
+    Taxa are from the NCBI taxonomy. Correct Newick format: ((<taxon1>:<distance1>,<taxon2>:<distance2>):<clade_distance1>,<taxon3>=<distance3>);. 
+    Make sure every opening parenthesis has a closing parenthesis."""
+    response = client.responses.create(
+        model=model,
+        instructions=instructions,
+        input=[
+            {
+                "role": "user", 
+                "content": [
+                    { "type": "input_text", "text": prompt},
+                    { "type": "input_image", "image_url": f"data:image/{get_image_format(image_path)};base64,{b64_image}"},
+                ],
+            }
+        ],
+    )
+    if re.search(r"\(.+;", response.output_text):
+        updated_newick = re.search(r"\(.+;", response.output_text).group()
+    else:
+        exit(f"[{datetime.datetime.now()}] Error in generate_newick_format(): No Newick found in the response.")
+    return updated_newick
+
+# TODO: alternative method of generating response: let API generate a text based tree format that it can handle better than newick and 
+# then parse this manually and turn it into newick format
+# def generate_structure_from_image(image_path, model="gpt-4.1"):
 def main():
     argument_parser = argparse.ArgumentParser(
-        description="""Newick encoding of images containing phylogenetic trees using AI. \n
+        description="""Newick encoding of images containing phylogenetic trees using AI.\n
         Modes:\n
         \tgenerate_newick: You can either provide a single directory with an image or the path to your image + the path where the image is saved at. \n 
         \tIf you provide just the directory then the first image found in the directory will be used and the resulting newick saved into this directory.""",
@@ -171,6 +235,7 @@ def main():
     mode = args.mode
     outfile_path = args.outfile_path
     image_path = args.image_path
+    file_id = datetime.datetime.now().strftime("%f")
     # Mode: generation of newick
     if mode == "encode_image":
         if not (directory_path or (image_path and outfile_path)):
@@ -180,18 +245,26 @@ def main():
             image_from_dir = get_image_from_directory(directory_path)
             print(f"[{datetime.datetime.now()}] Given image: " + str(image_from_dir))
             print(f"[{datetime.datetime.now()}] Used model: " + model)
-            generated_newick = generate_newick_from_image(image_path=image_from_dir, model=model)
+            generated_newick = generate_newick_from_image_directly(image_path=image_from_dir, model=model)
             print(f"[{datetime.datetime.now()}] Newick was generated.")
             write_newick_into_dir(generated_newick, directory_path, model=model)
             print(f"[{datetime.datetime.now()}] Newick was saved to file.")
         # generation of newick if path to image and path to outfile was given 
         elif image_path and outfile_path:
-            print(f"[{datetime.datetime.now()}] Given image: " + str(image_path))
-            print(f"[{datetime.datetime.now()}] Used model: " + model)
-            generated_newick = generate_newick_from_image(image_path=image_path, model=model)
-            print(f"[{datetime.datetime.now()}] Newick was generated using {model}")
-            write_newick_to_file(outfile_path=outfile_path, newick=generated_newick)
-            print(f"[{datetime.datetime.now()}] Newick was saved to {image_path}")
+            if os.path.isdir(outfile_path):
+                print(f"[{datetime.datetime.now()}] Given image: " + str(image_path))
+                print(f"[{datetime.datetime.now()}] Used model: " + model)
+                generated_newick = generate_newick_from_image_directly(image_path=image_path, model=model)
+                print(f"[{datetime.datetime.now()}] Newick was generated using {model}")
+                write_newick_into_dir(dir_path=outfile_path, file_id=file_id, newick=generated_newick, model=model)
+                print(f"[{datetime.datetime.now()}] Newick was saved to {outfile_path}")
+            else: 
+                print(f"[{datetime.datetime.now()}] Given image: " + str(image_path))
+                print(f"[{datetime.datetime.now()}] Used model: " + model)
+                generated_newick = generate_newick_from_image_directly(image_path=image_path, model=model)
+                print(f"[{datetime.datetime.now()}] Newick was generated using {model}")
+                write_newick_to_file(outfile_path=outfile_path, newick=generated_newick)
+                print(f"[{datetime.datetime.now()}] Newick was saved to {outfile_path}")
             
 # execute the main method
 main()
