@@ -29,6 +29,26 @@ def amount_invalid():
             counter += 1
     return counter
 
+def is_newick(newick, format):
+    """
+    Given a newick string checks if it has valid formatting.
+
+    Args:
+        newick (str): Newick string
+        format (int): format of the newick according to the ETE3 toolki
+
+    Returns:
+        bool: True only if the formatting is valid
+    """
+    try:
+        if format:
+            tree = Tree(newick, format=format)
+        else:
+            tree = Tree(newick)
+    except:
+        return False
+    return True
+
 # Given a preferred number of taxa (amount as int) and a boolean generates either a list with fixed or randomized amount [2, amount] of random valid taxa
 #
 # default amount of taxa is 10
@@ -61,7 +81,6 @@ def taxids_to_taxa(valid_rand_taxids):
     return valid_rand_taxa
 
 # Given a list of random valid taxa generates its topology and returns its newick tree as a string
-# Formatting issue? Each clade receives a 1
 def generate_newick_tree(valid_rand_taxa):
     newick = ncbi.get_topology(valid_rand_taxa).write()
     newick = re.sub(r"(?<=\))\d", "", newick)
@@ -78,6 +97,9 @@ def save_newick_image(newick, file_name = None, outfile_path = None, display_bra
         outfile_path (str): path to where the image is saved at
         file_name (str): Name of the file if no outfile_path was specified
     """
+    # check if the newick has correct formatting
+    if not is_newick(newick, 1):
+        print(f"[{datetime.datetime.now()}] Error in save_newick_image(): Newick string doesn't have valid formatting.")
     # make the the newick tree (string) into a file so that it can be drawn by bio.phylo 
     newick_tree = Phylo.read(StringIO(newick), "newick")
     # create a matplotlib figure and 
@@ -137,8 +159,6 @@ def translate_newick_tree(newick_string):
     """
     taxids = taxids_from_newick(newick_string)
     taxa = taxids_to_taxa(taxids)
-    # print("Taxa Test:")
-    # print(taxa)
     for i in range(len(taxids)):
         newick_string = newick_string.replace(taxids[i], taxa[i].replace(" ","_"))
     return newick_string
@@ -152,9 +172,6 @@ def randomize_distances(newick_string, max_distance):
         newick_string (str): The tree in newick format
         max_distance (float): upper limit of randomized distances
     """
-    # if re.sub() is given a lambda it tries to give the match object to the lambda but the lambda doesnt take any inputs
-    # and instead generates a new random float each time a match is found
-    
     newick_string = re.sub(
         r"(?<=:)\d+",
         lambda _: str(round(random.uniform(max_distance), 2)),
@@ -202,7 +219,7 @@ def main():
         argument_parser.add_argument('-rd', '--randomize_distances', required=False, type=int,
                                     help='Type=Int. If an Integer is specified the distances between taxa are randomized between 0.00 and the specified number. Per default all distances are set to 1.')
         argument_parser.add_argument("-db", "--display_branch_lengths", required=False, action="store_true",
-                                     help="On/Off flag. If specified then all branch lengths are added to the corresponding branch in the image. Per default all branch lengths are added.")
+                                     help="On/Off flag. If specified then all branch lengths are added to the corresponding branch in the image.")
         argument_parser.add_argument("-o", "--outfile_path", required=False, type=str,
                                      help="""If specified the directory containing the Newick and the corresponding image will be saved to this path. If the path points to a directory that doesn't exist
                                      it will be created.""")
@@ -213,7 +230,6 @@ def main():
         #
         # Main functionality
         #
-        
         # if the amount of taxa is not specified it defaults to 10 taxa
         amount_taxa = args.amount_taxa
         randomize_amount = args.randomize_amount
