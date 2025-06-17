@@ -238,7 +238,7 @@ def write_tsv_header(outfile_path):
     tsv_header = "newick1\tnewick2\t#_taxa1\t#_taxa2\tcorrect_taxa_ratio\t#_equal_length\t"
     tsv_header += "#_unequal_length\tmean_ham_dist\tmean_ham_ratio\tmean_edit_dist\tmean_edit_dist_total\t"
     tsv_header += "mean_edit_ratio\tmean_edit_ratio_total\trf_dist\tmax_rf_dist\trf_ratio\t"
-    tsv_header += "#_orig_edges\t#_gen_edges\t#_common_edges\t#_missing_edges"
+    tsv_header += "#_orig_edges\t#_gen_edges\t#_common_edges\t#_missing_edges\tcorrect_edge_ratio"
     tsv_header += "\n"
     with open(outfile_path, "w") as tsv_file:
         tsv_file.write(tsv_header)
