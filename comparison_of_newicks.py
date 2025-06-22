@@ -294,13 +294,15 @@ def main():
         elif path_generated_newick:
             newick = get_newick(path_generated_newick)
             # Generate the image of the phylogenetic tree that represents the AI generated Newick
-            ptan.save_newick_image(newick=newick, outfile_path=outfile_path)
+            treerender = ptan.TreeRender(newick=newick, package="ete3")
+            treerender.save_newick_image_ete3(outfile_path)
             print(f"[{datetime.datetime.now()}] generate_image mode: Image was saved.")
         elif path_original_newick:
             newick = get_newick(path_original_newick)
             # Generate the image of the phylogenetic tree that represents the AI generated Newick
-            ptan.save_newick_image(newick=newick, outfile_path=outfile_path)
             print(f"[{datetime.datetime.now()}] generate_image mode: Image was saved.")
+            treerender = ptan.TreeRender(newick=newick, package="ete3")
+            treerender.save_newick_image_ete3(outfile_path)
     elif mode == "compare_newicks":
         if not outfile_path or not path_generated_newick or not path_original_newick:
             exit(f"[{datetime.datetime.now()}] Error in compare_newicks mode: When using '--mode compare_newicks' "

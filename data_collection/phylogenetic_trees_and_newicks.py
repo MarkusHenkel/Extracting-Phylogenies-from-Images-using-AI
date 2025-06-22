@@ -138,7 +138,7 @@ class TreeRender:
         self, 
         newick, 
         package,
-        file_id,
+        file_id = None,
         outdir_path = None, # Path to the directory where output directory is created at
         display_branch_lengths = True, 
         circular_tree = False, 
@@ -192,7 +192,10 @@ class TreeRender:
             Phylo.draw(newick_tree, axes=axes, do_show=False, branch_labels=lambda c: c.branch_length)
         else: 
             Phylo.draw(newick_tree, axes=axes, do_show=False, branch_labels=lambda c: None)
-        outfile_path = self.outdir_path + f"\\phylo_tree_{self.file_id}.jpg"
+        if self.file_id:
+            outfile_path = self.outdir_path + f"\\phylo_tree_{self.file_id}.jpg"
+        else:
+            outfile_path = self.outdir_path + "\\phylo_tree.jpg"
         if outfile_path:
             if not os.path.exists(os.path.dirname(outfile_path)):
                 os.makedirs(os.path.dirname(outfile_path), exist_ok=True)
