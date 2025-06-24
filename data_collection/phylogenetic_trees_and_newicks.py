@@ -320,7 +320,8 @@ def main():
         # Arguments
         #
         
-        # parameter for the preferred number of taxa generated, if not specified defaults to 10 taxa
+        argument_parser.add_argument("-n", "--number_directories", type=int, required=False, default=1,
+                                     help="Choose the number of directories created with the chosen parameters.")
         argument_parser.add_argument("-p", "--package", required=True, choices=["phylo", "ete3"], 
                                  help="Specify which package is used in the creation of the image. Choose between Biopython.Phylo and ETE3 Toolkit.")
         argument_parser.add_argument('-a', '--amount_taxa', required=False, type=int, default=10,
@@ -350,6 +351,7 @@ def main():
         # Main functionality
         #
         # if the amount of taxa is not specified it defaults to 10 taxa
+        number_directories = args.number_directories
         amount_taxa = args.amount_taxa
         randomize_amount = args.randomize_amount
         randomize_distances = args.randomize_distances
@@ -361,68 +363,86 @@ def main():
         dont_allow_multifurcations = args.dont_allow_multifurcations
         right_to_left_orientation = args.right_to_left_orientation 
         branch_vertical_margin = args.branch_vertical_margin
-                
-        # if amount of taxa and randomize_amount are specified then call generate_random_taxids() with the amount of taxa and randomize set to True
-        # TODO: remove this line?
-        random_taxids = []
-        # -a and -r specified
-        if amount_taxa != None and randomize_amount == True:
-            random_taxids = generate_random_taxids(amount=amount_taxa, randomize=True)
-            newick_with_taxids = generate_newick_tree(random_taxids)
-            newick_with_taxa = translate_newick_tree(newick_with_taxids)
-        # -a specified, -r=False
-        elif amount_taxa != None and randomize_amount == False:
-            random_taxids = generate_random_taxids(amount=amount_taxa)
-            newick_with_taxids = generate_newick_tree(random_taxids)
-            newick_with_taxa = translate_newick_tree(newick_with_taxids)
-        # -r specified, -a=None
-        elif amount_taxa == None and randomize_amount == True:
-            random_taxids = generate_random_taxids(randomize=True)
-            newick_with_taxids = generate_newick_tree(random_taxids)
-            newick_with_taxa = translate_newick_tree(newick_with_taxids)
-        # neither specified, -a=None, -r=False
-        else:
-            random_taxids = generate_random_taxids()
-            newick_with_taxids = generate_newick_tree(random_taxids)
-            newick_with_taxa = translate_newick_tree(newick_with_taxids)
-        # randomize the distances if a max distance is specified
-        if randomize_distances:
-            newick_with_taxa = randomize_distances_func(newick_with_taxa, max_distance)
-        # 
-        # Generation of output
-        #
-        file_id = str(datetime.datetime.now().strftime(r"%Y-%m-%d-%H-%M-%S-%f"))
-        print("Data generation for extracting phylogenies from images using AI.")
-        print(f"Default file ID: {file_id}")
-        print("Parameters:")
-        print(f"  Randomize distances: {randomize_distances}")
-        print(f"  {f"Max distance: {max_distance}" if randomize_distances else "Distances: all exactly 1"}")
-        print(f"  Randomize amount of taxa: {randomize_amount}")
-        print(f"  {f"Amount of taxa: {amount_taxa}" if not randomize_amount else f"Specified amount of taxa: {amount_taxa}, actual amount: {len(random_taxids)}"}")
-        print(f"  Circular tree: {circular_tree}")
-        print(f"  Used package: {package}")
-        print(f"  Orientation: {"left to right" if not right_to_left_orientation else "right to left"}")
-        print(f"  Don't allow multifurcations: {dont_allow_multifurcations}")
-        print(f"  Vertical margin for adjacent branches: {branch_vertical_margin}")
-        print("Newick tree:")
-        print(f"  {newick_with_taxa}")
-        # instantiate treerender object
-        tree_render = TreeRender(
-            newick=newick_with_taxa,
-            randomize_distances = randomize_distances,
-            max_distance=max_distance,
-            amount_taxa=amount_taxa,
-            outdir_path=outdir_path,
-            file_id=file_id,
-            package=package,
-            display_branch_lengths=display_branch_lengths,
-            circular_tree=circular_tree,
-            right_to_left_orientation=right_to_left_orientation,
-            dont_allow_multifurcations=dont_allow_multifurcations,
-            branch_vertical_margin=branch_vertical_margin
-        )
-        # save directory to outfile path if it was specified. If not create the generated data directory with the data directory inside
-        tree_render.create_output_directory()
+        # necessary?
+        if number_directories < 1:
+            exit(f"[{time}] --number_directories {number_directories} not valid. Has to be positive integer > 1.")
+        # warn user if he wants to create more than one image
+        if number_directories > 1:
+            print(f"[{time}] Warning: You are about to create {number_directories} directories. Are you sure you want to proceed?")
+            while True:
+                print("Yes[y]/No[n]?")
+                yes_or_no = input()
+                if yes_or_no == "n":
+                    print("Cancelled.")
+                    exit()
+                elif yes_or_no == "y":
+                    print("Continuing.")
+                    break
+        # execute module <number_directories> times
+        for i in range(number_directories):
+            # if amount of taxa and randomize_amount are specified then call generate_random_taxids() with the amount of taxa and randomize set to True
+            # TODO: remove this line?
+            random_taxids = []
+            # -a and -r specified
+            if amount_taxa != None and randomize_amount == True:
+                random_taxids = generate_random_taxids(amount=amount_taxa, randomize=True)
+                newick_with_taxids = generate_newick_tree(random_taxids)
+                newick_with_taxa = translate_newick_tree(newick_with_taxids)
+            # -a specified, -r=False
+            elif amount_taxa != None and randomize_amount == False:
+                random_taxids = generate_random_taxids(amount=amount_taxa)
+                newick_with_taxids = generate_newick_tree(random_taxids)
+                newick_with_taxa = translate_newick_tree(newick_with_taxids)
+            # -r specified, -a=None
+            elif amount_taxa == None and randomize_amount == True:
+                random_taxids = generate_random_taxids(randomize=True)
+                newick_with_taxids = generate_newick_tree(random_taxids)
+                newick_with_taxa = translate_newick_tree(newick_with_taxids)
+            # neither specified, -a=None, -r=False
+            else:
+                random_taxids = generate_random_taxids()
+                newick_with_taxids = generate_newick_tree(random_taxids)
+                newick_with_taxa = translate_newick_tree(newick_with_taxids)
+            # randomize the distances if a max distance is specified
+            if randomize_distances:
+                newick_with_taxa = randomize_distances_func(newick_with_taxa, max_distance)
+            # 
+            # Generation of output
+            #
+            file_id = str(datetime.datetime.now().strftime(r"%Y-%m-%d-%H-%M-%S-%f"))
+            print("Data generation for extracting phylogenies from images using AI.")
+            print(f"Default file ID: {file_id}")
+            print("Parameters:")
+            print(f"  Number of directories created with chosen parameters: {number_directories}")
+            print(f"  Randomize distances: {randomize_distances}")
+            print(f"  {f"Max distance: {max_distance}" if randomize_distances else "Distances: all exactly 1"}")
+            print(f"  Randomize amount of taxa: {randomize_amount}")
+            print(f"  {f"Amount of taxa: {amount_taxa}" if not randomize_amount else f"Specified amount of taxa: {amount_taxa}, actual amount: {len(random_taxids)}"}")
+            print(f"  Circular tree: {circular_tree}")
+            print(f"  Used package: {package}")
+            print(f"  Orientation: {"left to right" if not right_to_left_orientation else "right to left"}")
+            print(f"  Don't allow multifurcations: {dont_allow_multifurcations}")
+            print(f"  Vertical margin for adjacent branches: {branch_vertical_margin}")
+            print("Newick tree:")
+            print(f"  {newick_with_taxa}")
+            # instantiate treerender object
+            tree_render = TreeRender(
+                newick=newick_with_taxa,
+                randomize_distances = randomize_distances,
+                max_distance=max_distance,
+                amount_taxa=amount_taxa,
+                outdir_path=outdir_path,
+                file_id=file_id,
+                package=package,
+                display_branch_lengths=display_branch_lengths,
+                circular_tree=circular_tree,
+                right_to_left_orientation=right_to_left_orientation,
+                dont_allow_multifurcations=dont_allow_multifurcations,
+                branch_vertical_margin=branch_vertical_margin
+            )
+            # save directory to outfile path if it was specified. If not create the generated data directory with the data directory inside
+            # do this multiple times if specified
+            tree_render.create_output_directory()
     
 # execute the main method
 main()
