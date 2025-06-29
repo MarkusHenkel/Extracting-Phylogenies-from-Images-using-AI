@@ -26,7 +26,7 @@ def amount_invalid():
             counter += 1
     return counter
 
-def is_newick(newick, format=1):
+def is_newick(newick, format=None):
     """
     Given a newick string checks if it has valid formatting.
 
@@ -84,11 +84,23 @@ def taxids_to_taxa(valid_rand_taxids):
         valid_rand_taxa.append(taxon)
     return valid_rand_taxa
 
+def remove_support_vals(newick):
+    """
+    Given a newick removes the support values after closing parentheses.
+    i.e. ((A:1,B:1)1:1,(C:1,D:1)1:1); => ((A:1,B:1):1,(C:1,D:1):1);
+    
+    Args:
+        newick (str): newick 
+
+    Returns:
+        str: newick without support values
+    """
+    return re.sub(r"(?<=\))\d", "", newick)
+
 # Given a list of random valid taxa generates its topology and returns its newick tree as a string
 def generate_newick_tree(valid_rand_taxa):
     newick = ncbi.get_topology(valid_rand_taxa).write()
-    newick = re.sub(r"(?<=\))\d", "", newick)
-    return newick
+    return  remove_support_vals(newick)
 
 def translate_newick_tree(newick_string):
     """
@@ -167,6 +179,28 @@ class TreeRender:
         self.right_to_left_orientation = right_to_left_orientation
         self.dont_allow_multifurcations = dont_allow_multifurcations
         self.branch_vertical_margin = branch_vertical_margin
+        
+    def solve_multifurcations(self):
+        # Debugging:
+        print("Solving multifurcations:")
+        print(f"Current newick: {self.newick}")
+        newick_tree.resolve_polytomy(recursive=True)    
+        # update the newick, so that the tree in the image and the newick match
+        self.newick = newick_tree.write()
+        # remove supports added by ete3
+        self.newick = remove_support_vals(self.newick)
+        # ete solves polytomies by adding branches with length zero, replace them with the specified branch lengths
+        if self.randomize_distances == True and True:
+            self.newick = re.sub(r"(?<=\):)0(?=[,\)])",
+                                    lambda m: str(round(random.uniform(0.00, self.max_distance), 2)), 
+                                    self.newick)
+            newick_tree = Tree(self.newick)
+            print("zeros are randomized")
+        else:
+            self.newick = re.sub(r"(?<=\):)0(?=[,\)])", "1", self.newick)
+            newick_tree = Tree(self.newick)
+            print("zeros are replaced with ones")
+        print(f"Updated newick: {self.newick}")
         
     def save_newick_image(self, outfile_path):
         """
@@ -251,18 +285,16 @@ class TreeRender:
             treestyle.mode = "r"
         # in ete3 0 is left to right, 1 is right to left 
         treestyle.orientation = int(self.right_to_left_orientation)
-        # solve multifurcations if they aren't allowed
+        # solve multifurcations if they aren't allowed and update the newick
         if self.dont_allow_multifurcations == True:
-            newick_tree.resolve_polytomy(recursive=True)    
+            self.solve_multifurcations()
         # save the image to a specified path or into the current working directory with a specified name
         if outfile_path:
             if not os.path.exists(os.path.dirname(outfile_path)):
                 os.makedirs(os.path.dirname(outfile_path), exist_ok=True)
                 newick_tree.render(file_name=outfile_path, tree_style=treestyle)
-                print(f"[{time}] save_newick_image_ete3: Image was saved to newly created directory.")
             else: 
                 newick_tree.render(file_name=outfile_path, tree_style=treestyle)
-                print(f"[{time}] save_newick_image_ete3: Image was saved to specified directory.")
         else:
             newick_tree.render(file_name=f"ete3_tree_{self.file_id}", tree_style=treestyle)
             
@@ -342,7 +374,7 @@ def main():
         argument_parser.add_argument("-rl", "--right_to_left_orientation", required=False, action="store_true", default=False,
                                      help="On/Off flag. ETE3 only. Specify if tree is oriented from right to left (taxa on the left). Default: False (left to right orientation)")
         argument_parser.add_argument("-da", "--dont_allow_multifurcations", required=False, action="store_true", default=False,
-                                     help="On/Off flag. ETE3 only. If specified then the resulting tree will be binary. Default: False.")
+                                     help="On/Off flag. If specified then the resulting tree will be binary. Default: False.")
         argument_parser.add_argument("-vm", "--branch_vertical_margin", required=False, type=int, default=10,
                                      help="ETE3 only. Amount of pixels between two adjacent branches. Should not be smaller than 5. Default: 10 pixels.")
         # Specified parameters
