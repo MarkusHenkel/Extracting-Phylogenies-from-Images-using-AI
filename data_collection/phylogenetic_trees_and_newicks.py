@@ -355,15 +355,15 @@ def main():
         argument_parser.add_argument("-n", "--number_directories", type=int, required=False, default=1,
                                      help="Choose the number of directories created with the chosen parameters.")
         argument_parser.add_argument("-p", "--package", required=True, choices=["phylo", "ete3"], 
-                                 help="Specify which package is used in the creation of the image. Choose between Biopython.Phylo and ETE3 Toolkit.")
+                                     help="Specify which package is used in the creation of the image. Choose between Biopython.Phylo and ETE3 Toolkit.")
         argument_parser.add_argument('-a', '--amount_taxa', required=False, type=int, default=10,
-                                    help='Type=Int. Choose the preferred amount of generated taxa. Default: 10.')
+                                     help='Type=Int. Choose the preferred amount of generated taxa. Default: 10.')
         argument_parser.add_argument('-ra', '--randomize_amount', required=False, action='store_true', default=False,
-                                    help='On/Off flag. Randomizes the amount of taxa generated. Range: 2 to <amount_taxa>. Default: False.')
+                                     help='On/Off flag. Randomizes the amount of taxa generated. Range: 2 to <amount_taxa>. Default: False.')
         argument_parser.add_argument('-rd', '--randomize_distances', required=False, action="store_true", default=False,
-                                    help='On/Off flag. If specified the distances (branch lengths) will be randomized. Default: False.')
+                                     help='On/Off flag. If specified the distances (branch lengths) will be randomized. Default: False.')
         argument_parser.add_argument('-md', '--max_distance', required=False, type=int, default=1,
-                                    help='Type=Int. If distances are randomized this will be the maximum distance. Default: 1.')
+                                     help='Type=Int. If distances are randomized this will be the maximum distance. Default: 1.')
         argument_parser.add_argument("-db", "--display_branch_lengths", required=False, action="store_true", default=True,
                                      help="On/Off flag. If specified then all branch lengths are added to the corresponding branch in the image. Default: True")
         argument_parser.add_argument("-o", "--outdir_path", required=False, type=str,
@@ -372,9 +372,9 @@ def main():
         argument_parser.add_argument("-c", "--circular_tree", required=False, action="store_true", default=False,
                                      help="On/Off flag. ETE3 only. If True the tree in the image will be in circular format. Default: False.")
         argument_parser.add_argument("-rl", "--right_to_left_orientation", required=False, action="store_true", default=False,
-                                     help="On/Off flag. ETE3 only. Specify if tree is oriented from right to left (taxa on the left). Default: False (left to right orientation)")
+                                     help="On/Off flag. ETE only. Specify if tree is oriented from right to left (taxa on the left). Default: False (left to right orientation)")
         argument_parser.add_argument("-da", "--dont_allow_multifurcations", required=False, action="store_true", default=False,
-                                     help="On/Off flag. If specified then the resulting tree will be binary. Default: False.")
+                                     help="On/Off flag. ETE3 only. If specified then the resulting tree will be binary. Default: False.")
         argument_parser.add_argument("-vm", "--branch_vertical_margin", required=False, type=int, default=10,
                                      help="ETE3 only. Amount of pixels between two adjacent branches. Should not be smaller than 5. Default: 10 pixels.")
         # Specified parameters
@@ -395,7 +395,6 @@ def main():
         dont_allow_multifurcations = args.dont_allow_multifurcations
         right_to_left_orientation = args.right_to_left_orientation 
         branch_vertical_margin = args.branch_vertical_margin
-        # necessary?
         if number_directories < 1:
             exit(f"[{time}] --number_directories {number_directories} not valid. Has to be positive integer > 1.")
         # warn user if he wants to create more than one image
@@ -410,6 +409,12 @@ def main():
                 elif yes_or_no == "y":
                     print("Continuing.")
                     break
+        # warn user if he tries to use ete3 params with the phylo package
+        if package == "phylo" and \
+            (branch_vertical_margin or dont_allow_multifurcations or right_to_left_orientation or circular_tree):
+                print(f"[{time}] Warning: Parameters branch_vertical_margin, dont_allow_multifurcations, \
+                    right_to_left_orientation and circular_tree are not available for the phylo packages. \
+                        Continuing without their application.")
         # execute module <number_directories> times
         for i in range(number_directories):
             # if amount of taxa and randomize_amount are specified then call generate_random_taxids() with the amount of taxa and randomize set to True
