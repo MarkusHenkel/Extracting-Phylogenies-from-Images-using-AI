@@ -179,18 +179,39 @@ class TreeRender:
         self.right_to_left_orientation = right_to_left_orientation
         self.dont_allow_multifurcations = dont_allow_multifurcations
         self.branch_vertical_margin = branch_vertical_margin
-        
+    
+    def is_multifurcating(self):
+        """
+        Checks if the newick of a treerender object contains a multifurcation
+
+        Returns:
+            bool: True if the newick contains a multifurcation
+        """
+        return self.is_multifurcating_worker(Tree(self.newick))
+    
+    def is_multifurcating_worker(self, newick_tree):
+        if len(newick_tree.get_children()) > 2:
+            return True
+        for node in newick_tree.get_children():
+            if self.is_multifurcating_worker(node):
+                return True
+        return False   
+    
     def solve_multifurcations(self):
-        # Debugging:
+        """
+        Solves multifurcations in the newick and the tree object using ete3's resolve_polytomy function
+        """
         print("Solving multifurcations:")
+        if not self.is_multifurcating:
+            print("No multifurcations found.")
+            return
         print(f"Current newick: {self.newick}")
+        newick_tree = Tree(self.newick)
         newick_tree.resolve_polytomy(recursive=True)    
-        # update the newick, so that the tree in the image and the newick match
-        self.newick = newick_tree.write()
-        # remove supports added by ete3
-        self.newick = remove_support_vals(self.newick)
+        # update the newick, so that the tree in the image and the newick match and remove support values by ete3
+        self.newick = remove_support_vals(newick_tree.write())
         # ete solves polytomies by adding branches with length zero, replace them with the specified branch lengths
-        if self.randomize_distances == True and True:
+        if self.randomize_distances == True:
             self.newick = re.sub(r"(?<=\):)0(?=[,\)])",
                                     lambda m: str(round(random.uniform(0.00, self.max_distance), 2)), 
                                     self.newick)
@@ -285,8 +306,8 @@ class TreeRender:
             treestyle.mode = "r"
         # in ete3 0 is left to right, 1 is right to left 
         treestyle.orientation = int(self.right_to_left_orientation)
-        # solve multifurcations if they aren't allowed and update the newick
-        if self.dont_allow_multifurcations == True:
+        # solve multifurcations if they aren't allowed and update the newick if there is a multifurcation
+        if self.dont_allow_multifurcations == True and self.is_multifurcating():
             self.solve_multifurcations()
         # save the image to a specified path or into the current working directory with a specified name
         if outfile_path:
