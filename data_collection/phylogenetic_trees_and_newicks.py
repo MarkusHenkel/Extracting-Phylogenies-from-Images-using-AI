@@ -343,15 +343,15 @@ class TreeRender:
             if not os.path.exists(self.outdir_path):
                 os.makedirs(self.outdir_path)
                 print(f"[{time}] create_output_directory: Specified directory was created")
-            image_path = self.outdir_path + f"\\data_{self.file_id}\\{self.package}_tree_{self.file_id}.jpg"
-            newick_path = self.outdir_path + f"\\data_{self.file_id}\\newick_{self.file_id}.nwk"
-            tsv_path = self.outdir_path + f"\\data_{self.file_id}\\params_{self.file_id}.tsv"
+            image_path = self.outdir_path + f"\\data{self.file_id}\\tree{self.file_id}.jpg"
+            newick_path = self.outdir_path + f"\\data{self.file_id}\\newick{self.file_id}.nwk"
+            tsv_path = self.outdir_path + f"\\data{self.file_id}\\params{self.file_id}.tsv"
             print(f"[{time}] create_output_directory: Image is saved to specified directory.")
         else:
-            path = str(pathlib.Path(__file__).parent.resolve()) + f"\\data_{self.file_id}\\"
-            image_path = path + f"{self.package}_tree_{self.file_id}.jpg"
-            newick_path = path + f"newick_{self.file_id}.nwk"
-            tsv_path = path + f"params_{self.file_id}.tsv"
+            path = str(pathlib.Path(__file__).parent.resolve()) + f"\\data{self.file_id}\\"
+            image_path = path + f"tree{self.file_id}.jpg"
+            newick_path = path + f"newick{self.file_id}.nwk"
+            tsv_path = path + f"params{self.file_id}.tsv"
             print(f"[{time}] create_output_directory: Image is saved to generated_data directory in working directory.")
         # save the image
         self.save_newick_image(image_path)
@@ -467,7 +467,9 @@ def main():
             # 
             # Generation of output
             #
-            file_id = str(datetime.datetime.now().strftime(r"%Y-%m-%d-%H-%M-%S-%f"))
+            # unique file ID is just the current time (hour, minute, second, microsecond)
+            # could be shortened to second and microsecond maybe
+            file_id = str(datetime.datetime.now().strftime(r"%H%M%S%f"))
             print("Data generation for extracting phylogenies from images using AI.")
             print(f"Default file ID: {file_id}")
             print("Parameters:")
