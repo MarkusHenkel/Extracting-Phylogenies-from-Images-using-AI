@@ -31,7 +31,7 @@ augment_1_ar = A.Compose(
         A.LongestMaxSize(max_size=image_size, interpolation=1), # resize while keeping aspect ratio
         A.PadIfNeeded(min_height=image_size, min_width=image_size, border_mode=0), # padding for square res
         A.Normalize(),
-        A.ToTensorV2()
+        A.ToTensorV2() # output tensor with shape (Channels, Height, Width)
     ]
 )
 
@@ -51,15 +51,28 @@ augment_2 = A.Compose(
             A.GridDropout(ratio=0.2, p=1.0),
             # fewer but bigger square holes, , non-overlapping
             A.GridDropout(ratio=0.1, unit_size_range=(500, 1000),p=1.0),
-        ], p=0.1), # apply dropout only every 10th image
+        ], p=0.1), # apply one type of dropout every 10th image TODO: every image instead in second training round
         A.Normalize(), # TODO: default values or not?
-        A.ToTensorV2()
+        A.ToTensorV2() # output tensor with shape (Channels, Height, Width)
         
     ]
 )
 
 def transform_1_ar(dataset):
-    dataset["pixel_values"] = [augment_1_ar(image=image) for image in dataset["image"]]
+    """
+    transform wrapper for dataset object's .set_transform() 
+
+    Args:
+        dataset (huggingface dataset object): dataset created by the preprocess_dataset function
+
+    Returns:
+        _type_: _description_
+    """
+    # apply transform to all images in the dataset
+    for i in range(len(dataset["pixel_values"])):
+        # albumentations expects np array of shape (H,W,C) not (C,H,W) 
+        pixel_values = np.transpose(dataset["pixel_values"][i], (1,2,0))
+        dataset["pixel_values"][i] = augment_1_ar(image=pixel_values) # augment outputs tensors of shape (H,W,C) again
     return dataset
 
 ########## LOADING DATASET ##########
@@ -137,14 +150,16 @@ def preprocess_dataset(dataset, tokenizer, image_processor):
     # replace image and newick with the entries the model expects => pixel_values and labels
     for i in range(len(dataset["id"])):
         pil_image = Image.open(dataset["pixel_values"][i])
-        # TODO: pyarrow.lib.ArrowTypeError: Expected bytes, got a 'Tensor' object 
-        dataset["pixel_values"].append(image_processor(pil_image, return_tensors="pt").pixel_values[0])
-        dataset["labels"].append(tokenizer(
+        pixel_values = image_processor(pil_image, return_tensors="pt").pixel_values[0]
+        label = tokenizer(
             dataset["labels"][i], 
             padding="max_length", # pad up to max length if necessary
             max_length=max_token_length, # set maximum of tokens in each newick string
-            return_tensors="pt" # pytorch tensors
-        ).input_ids[0])
+            return_tensors="pt" # tensor is a pytorch tensor
+        ).input_ids[0]
+        # change tensor to np array for albumentations
+        dataset["pixel_values"][i] = pixel_values.numpy()
+        dataset["labels"][i] = label
     return Dataset.from_dict(dataset)
 
 ########## COMPUTE METRICS ##########
@@ -175,15 +190,15 @@ def get_augmented_img_from_path(image_path, augmentation=augment_1_ar):
         exit(f"[{time}] Error in get_augmented_img_from_path: Path {image_path} could not be resolved.")
     # turn in into RGB format
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    # apply transform
-    augmented_tensor = augmentation(image=image_rgb)['image']
+    # apply transform 
+    augmented_tensor = augmentation(image=image_rgb)['image'] # tensor with shape (C, H, W)
     return augmented_tensor
 
 def test_augmentation(augment, image_path):
     augmented_tensor = get_augmented_img_from_path(augmentation=augment, image_path=image_path)
     plt.figure(figsize=[image_size, image_size], dpi=100)
-    # turn the tensor into numpy array 
-    plt.imshow(np.transpose(augmented_tensor.cpu().numpy(),(1,2,0)))
+    # for matplotlib: turn the tensor into numpy array and transpose from (Channels, Height, Width) to (H, W, C)  
+    plt.imshow(np.transpose(augmented_tensor.cpu().numpy(),(1,2,0))) 
     plt.axis('off')
     plt.show()
     
@@ -200,10 +215,9 @@ def perform_inference_img_processor(image_path, model, image_processor, tokenize
         image_processor (image processor object, optional): image processor e.g. HF ViTImageProcessor. Defaults to pretrained_image_processor.
     """
     image = cv2.imread(image_path)
-    augmented_tensor = augment_1_ar(image=image)["image"]
-    # TODO: image processor likely expects a numpy array, not a pt tensor (bc it worked before, but ToTensorV2 was added)
-    # turn the tensor into numpy array 
-    augmented_np_arr = np.transpose(augmented_tensor.cpu().numpy(),(1,2,0))
+    augmented_tensor = augment_1_ar(image=image)["image"] # tensor with shape (C, H, W)
+    # turn the tensor into numpy array, transpose from (C, H, W) to (H, W, C) 
+    augmented_np_arr = np.transpose(np.array(augmented_tensor),(1,2,0)) # TODO: test if it works this way
     pixel_values = image_processor(augmented_np_arr, return_tensors="pt").pixel_values
     generated_ids = model.generate(pixel_values)
     generated_text = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
@@ -213,7 +227,6 @@ def main():
     if __name__ == "__main__":
         # Finetuning
         # load a fine-tuned image captioning model, corresponding tokenizer, image processor and trainer
-        
         model = VisionEncoderDecoderModel.from_pretrained("nlpconnect/vit-gpt2-image-captioning")
         pretrained_image_processor = ViTImageProcessor.from_pretrained("nlpconnect/vit-gpt2-image-captioning")
         tokenizer = AutoTokenizer.from_pretrained("nlpconnect/vit-gpt2-image-captioning") # TODO: gpt2 from huggingface instead?
@@ -221,15 +234,18 @@ def main():
         tokenizer.add_tokens(special_tokens, special_tokens=True)
         model.decoder.resize_token_embeddings(len(tokenizer))
         dataset_path = r".\data_collection\dataset_test\ete3_20_taxa"
+        # r"""
         dataset = preprocess_dataset(
             dataset=load_dataset(dataset_path=dataset_path), 
             tokenizer=tokenizer, 
             image_processor=pretrained_image_processor
         )
+        print(f"[{time}] main(): Dataset was loaded and preprocessed.")
         # use set_transform to apply image augmentations on the fly during training instead of map() to save disk space
         # train in 2 stages: baseline and then robustness => augment_1_ar then augment_2 (with dropout etc.)
-        # TODO: album expects a np array not a tensor, turn tensor back into np.array
+        # TODO: album expects a np array not a tensor, turn tensor back into np array
         dataset.set_transform(transform=transform_1_ar)
+        print(f"[{time}] main(): Dataset transform set to transform_1_ar.")
         # split dataset into 80% training and 20% evaluation
         split_dataset = dataset.train_test_split(test_size=0.2)
         train_dataset = split_dataset["train"]
@@ -254,24 +270,26 @@ def main():
             # TODO: data collator?
             eval_dataset=eval_dataset,
             tokenizer=tokenizer,
-            compute_metrics=compute_metrics,
+            # compute_metrics=compute_metrics, TODO: add compute_metrics function
         )
         print(f"[{time}] main(): Trainer was instantiated.")
 
         # Train the model
         train_results = trainer.train()
+        print(f"[{time}] main(): trainer.train() finished.")
         trainer.save_model()
         trainer.log_metrics("train", train_results.metrics)
         trainer.save_metrics("train", train_results.metrics)
         trainer.save_state()
-        
+        # """
         ########## Testing ##########
-        ete3_20_taxa = r"C:\Users\marku\Desktop\StudiumVault\Semester6\Bachelorarbeit\Code\Extracting-Phylogenies-from-Images-using-AI\data_collection\dataset_test\ete3_20_taxa\data_2025-06-25-00-25-53-945410\ete3_tree_2025-06-25-00-25-53-945410.jpg"
-        phylo_20_taxa = r"C:\Users\marku\Desktop\StudiumVault\Semester6\Bachelorarbeit\Code\Extracting-Phylogenies-from-Images-using-AI\data_collection\dataset_test\phylo_20_taxa\data_2025-06-25-00-25-27-260802\phylo_tree_2025-06-25-00-25-27-260802.jpg"
+        ete3_20_taxa = r".\data_collection\dataset_test\ete3_20_taxa\data_2025-06-25-00-25-53-945410\ete3_tree_2025-06-25-00-25-53-945410.jpg"
+        phylo_20_taxa = r".\data_collection\dataset_test\phylo_20_taxa\data_2025-06-25-00-25-27-260802\phylo_tree_2025-06-25-00-25-27-260802.jpg"
         # # example images for transformation testing
         # long_newick = "(((((Sinorhizobium_fredii:1,Clostridium_baratii:1):1,((((Schaalia_odontolytica:1,Halanaerobium:1):1,Pylaiella:1):1,Trianthema:1):1,Arenaria:1):1):1,Bertholletia:1):1,Pastinaca:1,(((Trochodendron_aralioides:1,Alternaria_alternata:1):1,(Malacosoma_americanum:1,Xenopus_borealis:1):1):1,Coluber_constrictor:1):1):1,(((Afropavo_congensis:1,Paridae:1):1,Alouatta_seniculus:1):1,((Afipia_carboxidovorans:1,Desulfomicrobium_norvegicum:1):1,Centruroides_tecomanus:1):1):1);"
         # print(get_number_tokens(long_newick)) # 236 tokens without special tokens, 261 tokens with special tokens added 
         # test_augmentation(augment=augment_1_ar, image_path=phylo_20_taxa)
+        perform_inference_img_processor(image_path=ete3_20_taxa, model=model, image_processor=pretrained_image_processor, tokenizer=tokenizer)
         
 # execute main
 main()
