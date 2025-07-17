@@ -74,7 +74,31 @@ def transform_1_ar(dataset):
     for i in range(len(dataset["pixel_values"])):
         # albumentations expects np array of shape (H,W,C) not (C,H,W) 
         pixel_values = np.transpose(dataset["pixel_values"][i], (1,2,0))
-        dataset["pixel_values"][i] = augment_1_ar(image=pixel_values) # augment outputs tensors of shape (H,W,C) again
+        dataset["pixel_values"][i] = augment_1_ar(image=pixel_values)["image"] # augment outputs tensors of shape (H,W,C) again
+    # Debugging
+    # print(100 * "#")
+    # print("pixel_values AFTER AUGMENTATION")
+    # print(dataset["pixel_values"][0])
+    # print("TYPE OF pixel_values AFTER AUGMENTATION")
+    # print(type(dataset["pixel_values"][0]))
+    # print(100 * "#")
+    return dataset
+
+def transform_2(dataset):
+    """
+    transform wrapper for dataset object's .set_transform() 
+
+    Args:
+        dataset (huggingface dataset object): dataset created by the preprocess_dataset function
+
+    Returns:
+        _type_: _description_
+    """
+    # apply transform to all images in the dataset
+    for i in range(len(dataset["pixel_values"])):
+        # albumentations expects np array of shape (H,W,C) not (C,H,W) 
+        pixel_values = np.transpose(dataset["pixel_values"][i], (1,2,0))
+        dataset["pixel_values"][i] = augment_2(image=pixel_values)["image"] # augment outputs tensors of shape (H,W,C) again
     return dataset
 
 ########## LOADING DATASET ##########
@@ -152,33 +176,33 @@ def preprocess_dataset(dataset, tokenizer, image_processor):
     # replace image and newick with the entries the model expects => pixel_values and labels
     for i in range(len(dataset["id"])):
         pil_image = Image.open(dataset["pixel_values"][i])
-        pixel_values = image_processor(pil_image, return_tensors="pt").pixel_values[0]
+        # get the pixel values of the pil_image as a numpy array (for albumentations)
+        pixel_values = image_processor(pil_image, return_tensors="pt").pixel_values[0].numpy()
         # Debugging
         if i == 0:
             test = pixel_values
         # Debugging
-        if not str(type(pixel_values)) == "<class 'torch.Tensor'>":
-            print(100 * "#")
-            print("Not a tensor")
-            print(100 * "#")
+        # if not str(type(pixel_values)) == "<class 'torch.Tensor'>":
+        #     print(100 * "#")
+        #     print("Not a tensor")
+        #     print(100 * "#")
         label = tokenizer(
             dataset["labels"][i], 
             padding="max_length", # pad up to max length if necessary
             max_length=max_token_length, # set maximum of tokens in each newick string
             return_tensors="pt" # tensor is a pytorch tensor
-        ).input_ids # removed [0], not present in HF VED example
-        # change tensor to np array for albumentations
-        dataset["pixel_values"][i] = pixel_values.numpy()
+        ).input_ids[0].numpy()
+        dataset["pixel_values"][i] = pixel_values
         dataset["labels"][i] = label
     # Debugging
     print(100 * "#")
     print("Pixel values before turning them into a numpy array:")
-    print(test)
+    # print(test)
     print(type(test))
     print(100 * "#")
     print(100 * "#")
     print("Pixel values after turning them into a numpy array:")
-    print(dataset["pixel_values"][0])
+    # print(dataset["pixel_values"][0])
     print(type(dataset["pixel_values"][0]))
     print(100 * "#")
     return Dataset.from_dict(dataset)
@@ -273,8 +297,11 @@ def main():
         split_dataset = dataset.train_test_split(test_size=0.2)
         train_dataset = split_dataset["train"]
         eval_dataset = split_dataset["test"]
+        # Debugging
         print(100 * "#")
         print("dataset: " + str(dataset))
+        print("Features:")
+        print(str(dataset.features))
         print(100 * "#")
         print("type of dataset: " + str(type(dataset)))
         print(100 * "#")
