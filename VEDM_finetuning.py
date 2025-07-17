@@ -11,6 +11,8 @@ from PIL import Image #
 import datetime
 import re
 import numpy as np # jumping between np arrays (albumentations) and pytorch tensors (model)
+# import a data collator
+from transformers import default_data_collator
 
 # time for logging
 time = datetime.datetime.now().strftime("%Y-%b-%d %H:%M:%S")
@@ -151,15 +153,34 @@ def preprocess_dataset(dataset, tokenizer, image_processor):
     for i in range(len(dataset["id"])):
         pil_image = Image.open(dataset["pixel_values"][i])
         pixel_values = image_processor(pil_image, return_tensors="pt").pixel_values[0]
+        # Debugging
+        if i == 0:
+            test = pixel_values
+        # Debugging
+        if not str(type(pixel_values)) == "<class 'torch.Tensor'>":
+            print(100 * "#")
+            print("Not a tensor")
+            print(100 * "#")
         label = tokenizer(
             dataset["labels"][i], 
             padding="max_length", # pad up to max length if necessary
             max_length=max_token_length, # set maximum of tokens in each newick string
             return_tensors="pt" # tensor is a pytorch tensor
-        ).input_ids[0]
+        ).input_ids # removed [0], not present in HF VED example
         # change tensor to np array for albumentations
         dataset["pixel_values"][i] = pixel_values.numpy()
         dataset["labels"][i] = label
+    # Debugging
+    print(100 * "#")
+    print("Pixel values before turning them into a numpy array:")
+    print(test)
+    print(type(test))
+    print(100 * "#")
+    print(100 * "#")
+    print("Pixel values after turning them into a numpy array:")
+    print(dataset["pixel_values"][0])
+    print(type(dataset["pixel_values"][0]))
+    print(100 * "#")
     return Dataset.from_dict(dataset)
 
 ########## COMPUTE METRICS ##########
@@ -223,6 +244,9 @@ def perform_inference_img_processor(image_path, model, image_processor, tokenize
     generated_text = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
     print(generated_text)
     
+########## CUSTOM DATA COLLATOR ##########
+# TODO
+
 def main():
     if __name__ == "__main__":
         # Finetuning
@@ -243,13 +267,23 @@ def main():
         print(f"[{time}] main(): Dataset was loaded and preprocessed.")
         # use set_transform to apply image augmentations on the fly during training instead of map() to save disk space
         # train in 2 stages: baseline and then robustness => augment_1_ar then augment_2 (with dropout etc.)
-        # TODO: album expects a np array not a tensor, turn tensor back into np array
         dataset.set_transform(transform=transform_1_ar)
         print(f"[{time}] main(): Dataset transform set to transform_1_ar.")
         # split dataset into 80% training and 20% evaluation
         split_dataset = dataset.train_test_split(test_size=0.2)
         train_dataset = split_dataset["train"]
         eval_dataset = split_dataset["test"]
+        print(100 * "#")
+        print("dataset: " + str(dataset))
+        print(100 * "#")
+        print("type of dataset: " + str(type(dataset)))
+        print(100 * "#")
+        print("First dataset entry:")
+        print("pixel_values: " + str(dataset[0]["pixel_values"]))
+        print("pixel_values type: " + str(type(dataset[0]["pixel_values"])))
+        print("labels: " + str(dataset[0]["labels"]))
+        print("labels type: " + str(type(dataset[0]["labels"])))
+        print(100 * "#")
         # set the training arguments 
         # taken from basic training example by huggingface: https://deepwiki.com/huggingface/transformers/3.1-trainer-class
         training_args = TrainingArguments(
@@ -267,7 +301,7 @@ def main():
             model=model,
             args=training_args,
             train_dataset=train_dataset,
-            # TODO: data collator?
+            data_collator=default_data_collator,
             eval_dataset=eval_dataset,
             tokenizer=tokenizer,
             # compute_metrics=compute_metrics, TODO: add compute_metrics function
