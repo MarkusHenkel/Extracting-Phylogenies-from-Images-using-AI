@@ -228,7 +228,8 @@ class TreeRender:
         Given a newick tree as a string, generates an image of the newick tree and saves it to the specified path. 
         If no path is specified it will instead save the image to the current directory. 
         If no file name is provided the image in the current directory will be called "{package}_tree_{id}.jpg".
-        If the path contains directories that dont exist, they will be created. If no valid file extension is used, the image will be a .jpg.
+        If the path contains directories that dont exist, they will be created. If no valid file extension is used, 
+        the image will be a .jpg.
         """
         if not self.package in ["phylo", "ete3"]:
             exit(f"[{time}] save_newick_image: Package {self.package} not valid.")
@@ -290,12 +291,13 @@ class TreeRender:
         # TODO: depending on how common this is it might be interesting to test if the AI can differentiate both of the values
         treestyle.show_branch_support = False # branch support currently isnt shown 
         treestyle.show_branch_length = self.display_branch_lengths
-        treestyle.scale = 100 # 50 pixels per branch length unit
+        # treestyle.scale = 100 # 100 pixels per branch length unit
         # default margin is 10 pixels
         if self.branch_vertical_margin:
             if self.branch_vertical_margin < 10:
                 treestyle.branch_vertical_margin = 10
-                print(f"[{time}] Warning in save_newick_image_ete3: branch_vertical_margin should not deceed 5 pixels. Defaulting to 10 pixels.")
+                print(f"[{time}] Warning in save_newick_image_ete3: branch_vertical_margin should not deceed 10 pixels. \
+                    Defaulting to 10 pixels.")
             else:
                 treestyle.branch_vertical_margin = self.branch_vertical_margin  
         else:
@@ -362,47 +364,79 @@ class TreeRender:
         # save the tsv
         self.write_params_to_tsv(tsv_path)
         print(f"[{time}] create_output_directory: Used parameters were saved into .tsv.")
+        
+# TODO: implement create_rand_treerender()
+def create_rand_treerender():
+    """
+    Generates a TreeRender object by randomizing given parameters and randomly applying given flags.
 
+    Returns:
+        _type_: _description_
+    """
+    return None
+
+def ask_user_to_continue():
+    while True:
+        print("Yes[y]/No[n]?")
+        yes_or_no = input()
+        if yes_or_no == "n":
+            print("Cancelled.")
+            exit()
+        elif yes_or_no == "y":
+            print("Continuing.")
+            break  
+        
 def main():
     # prevent execution of the whole module when calling it in other modules
     if __name__ == '__main__': 
         argument_parser = argparse.ArgumentParser(
             description="Data Collection for Extracting phylogenies from images using AI"
         )
-        #
-        # Arguments
-        #
-        
+        ########## ARGUMENTS ##########
         argument_parser.add_argument("-n", "--number_directories", type=int, required=False, default=1,
-                                     help="Choose the number of directories created with the chosen parameters.")
+                                     help="""Choose the number of directories created with the chosen parameters. 
+                                     Default: 1.""")
         argument_parser.add_argument("-p", "--package", required=True, choices=["phylo", "ete3"], 
-                                     help="Specify which package is used in the creation of the image. Choose between Biopython.Phylo and ETE3 Toolkit.")
+                                     help="Specify which package is used in the creation of the image. \
+                                         Choose between Biopython.Phylo and ETE3 Toolkit.")
         argument_parser.add_argument('-a', '--amount_taxa', required=False, type=int, default=10,
                                      help='Type=Int. Choose the preferred amount of generated taxa. Default: 10.')
         argument_parser.add_argument('-ra', '--randomize_amount', required=False, action='store_true', default=False,
-                                     help='On/Off flag. Randomizes the amount of taxa generated. Range: 2 to <amount_taxa>. Default: False.')
+                                     help="""On/Off flag. Randomizes the amount of taxa generated. Range: 2 to 
+                                     <amount_taxa>. Default: False.""")
         argument_parser.add_argument('-rd', '--randomize_distances', required=False, action="store_true", default=False,
-                                     help='On/Off flag. If specified the distances (branch lengths) will be randomized. Default: False.')
+                                     help="""On/Off flag. If specified the distances (branch lengths) will be 
+                                     randomized. Default: False.""")
         argument_parser.add_argument('-md', '--max_distance', required=False, type=int, default=1,
-                                     help='Type=Int. If distances are randomized this will be the maximum distance. Default: 1.')
+                                     help="""Type=Int. If distances are randomized this will be the maximum distance. 
+                                     Default: 1.""")
         argument_parser.add_argument("-db", "--display_branch_lengths", required=False, action="store_true", default=True,
-                                     help="On/Off flag. If specified then all branch lengths are added to the corresponding branch in the image. Default: True")
+                                     help="""On/Off flag. If specified then all branch lengths are added to the 
+                                     corresponding branch in the image. Default: True""")
         argument_parser.add_argument("-o", "--outdir_path", required=False, type=str,
-                                     help="""If specified the directory containing the Newick and the corresponding image will be saved to this path. If the path points to a directory that doesn't exist
-                                     it will be created, path can't point to a file. If not specified then a generated_data directory will be created in the current working directory.""")
+                                     help="""If specified the directory containing the Newick and the corresponding 
+                                     image will be saved to this path. If the path points to a directory that
+                                     doesn't exist it will be created, path can't point to a file. If not specified
+                                     then a generated_data directory will be created in the current working 
+                                     directory.""")
         argument_parser.add_argument("-c", "--circular_tree", required=False, action="store_true", default=False,
-                                     help="On/Off flag. ETE3 only. If True the tree in the image will be in circular format. Default: False.")
-        argument_parser.add_argument("-rl", "--right_to_left_orientation", required=False, action="store_true", default=False,
-                                     help="On/Off flag. ETE only. Specify if tree is oriented from right to left (taxa on the left). Default: False (left to right orientation)")
-        argument_parser.add_argument("-da", "--dont_allow_multifurcations", required=False, action="store_true", default=False,
-                                     help="On/Off flag. ETE3 only. If specified then the resulting tree will be binary. Default: False.")
-        argument_parser.add_argument("-vm", "--branch_vertical_margin", required=False, type=int, default=10,
-                                     help="ETE3 only. Amount of pixels between two adjacent branches. Should not be smaller than 5. Default: 10 pixels.")
+                                     help="""On/Off flag. ETE3 only. If True the tree in the image will be in 
+                                         circular format. Default: False.""")
+        argument_parser.add_argument("-rl", "--right_to_left_orientation", required=False, action="store_true", 
+                                     default=False,help="""On/Off flag. ETE only. Specify if tree is oriented from 
+                                     right to left (taxa on the left). Default: False (left to right orientation)""")
+        argument_parser.add_argument("-da", "--dont_allow_multifurcations", required=False, action="store_true", 
+                                     default=False,help="""On/Off flag. ETE3 only. If specified then the resulting 
+                                     tree will be binary. Default: False.""")
+        argument_parser.add_argument("-vm", "--branch_vertical_margin", required=False, type=int, 
+                                     help="""ETE3 only. Amount of pixels between two adjacent branches. 
+                                     Should not be smaller than 5. Default: 10 pixels.""")
+        # argument_parser.add_argument("--create_dataset", required=False, action="store_true", default=False,
+        #                              help="""On/Off flag. Quickly create a whole dataset instead of one type of image by specifying 
+        #                              --create_dataset. This will randomize other specified parameters and randomly apply 
+        #                              specified flags.""")
         # Specified parameters
         args = argument_parser.parse_args()
-        #
-        # Main functionality
-        #
         # if the amount of taxa is not specified it defaults to 10 taxa
         number_directories = args.number_directories
         amount_taxa = args.amount_taxa
@@ -416,31 +450,47 @@ def main():
         dont_allow_multifurcations = args.dont_allow_multifurcations
         right_to_left_orientation = args.right_to_left_orientation 
         branch_vertical_margin = args.branch_vertical_margin
+        # create_dataset = args.create_dataset
+        ########## CHECKS ##########
+        # warn user if they use ete3 parameters with a module other than ete3
+        if (not package == "ete3") and (
+            branch_vertical_margin or 
+            dont_allow_multifurcations or 
+            circular_tree or 
+            right_to_left_orientation
+        ):
+            # warn user which parameters cant be applied and reset them to default values
+            print(f"[{time}] Warning: You are using parameters that are ete3 only: ")
+            if branch_vertical_margin:
+                print("branch_vertical")
+                branch_vertical_margin = None
+            if dont_allow_multifurcations:
+                print("dont_allow_multifurcations") 
+                dont_allow_multifurcations = False 
+            if circular_tree:
+                print("circular_tree") 
+                circular_tree = False
+            if right_to_left_orientation:
+                print("right_to_left_orientation") 
+                right_to_left_orientation = False
+            print(f"[{time}] Resetting ete3 parameters. Do you want to proceed?")
+            ask_user_to_continue()
+        
+        # if create_dataset is not specified, one of the two
         if number_directories < 1:
             exit(f"[{time}] --number_directories {number_directories} not valid. Has to be positive integer > 1.")
         # warn user if he wants to create more than one image
         if number_directories > 1:
             print(f"[{time}] Warning: You are about to create {number_directories} directories. Are you sure you want to proceed?")
-            while True:
-                print("Yes[y]/No[n]?")
-                yes_or_no = input()
-                if yes_or_no == "n":
-                    print("Cancelled.")
-                    exit()
-                elif yes_or_no == "y":
-                    print("Continuing.")
-                    break
-        # warn user if he tries to use ete3 params with the phylo package
-        if package == "phylo" and \
-            (branch_vertical_margin or dont_allow_multifurcations or right_to_left_orientation or circular_tree):
-                print(f"[{time}] Warning: Parameters branch_vertical_margin, dont_allow_multifurcations, \
-                    right_to_left_orientation and circular_tree are not available for the phylo packages. \
-                        Continuing without their application.")
+            ask_user_to_continue()
+        ########## MAIN LOOP ##########
+        print("Data generation for extracting phylogenies from images using AI.")
         # execute module <number_directories> times
         for i in range(number_directories):
             # if amount of taxa and randomize_amount are specified then call generate_random_taxids() with the amount of taxa and randomize set to True
             # TODO: remove this line?
             random_taxids = []
+            # TODO: refactor
             # -a and -r specified
             if amount_taxa != None and randomize_amount == True:
                 random_taxids = generate_random_taxids(amount=amount_taxa, randomize=True)
@@ -464,16 +514,11 @@ def main():
             # randomize the distances if a max distance is specified
             if randomize_distances:
                 newick_with_taxa = randomize_distances_func(newick_with_taxa, max_distance)
-            # 
-            # Generation of output
-            #
             # unique file ID is just the current time (hour, minute, second, microsecond)
             # could be shortened to second and microsecond maybe
             file_id = str(datetime.datetime.now().strftime(r"%H%M%S%f"))
-            print("Data generation for extracting phylogenies from images using AI.")
             print(f"Default file ID: {file_id}")
             print("Parameters:")
-            print(f"  Number of directories created with chosen parameters: {number_directories}")
             print(f"  Randomize distances: {randomize_distances}")
             print(f"  {f"Max distance: {max_distance}" if randomize_distances else "Distances: all exactly 1"}")
             print(f"  Randomize amount of taxa: {randomize_amount}")
@@ -483,9 +528,13 @@ def main():
             print(f"  Orientation: {"left to right" if not right_to_left_orientation else "right to left"}")
             print(f"  Don't allow multifurcations: {dont_allow_multifurcations}")
             print(f"  Vertical margin for adjacent branches: {branch_vertical_margin}")
-            print("Newick tree:")
+            print("Newick:")
             print(f"  {newick_with_taxa}")
             # instantiate treerender object
+            # if create_dataset:
+            #     # create a treerender object by randomizing the given parameters and flags 
+            #     create_rand_treerender()
+            # else:
             tree_render = TreeRender(
                 newick=newick_with_taxa,
                 randomize_distances = randomize_distances,
