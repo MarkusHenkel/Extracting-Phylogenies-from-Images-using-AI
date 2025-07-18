@@ -195,16 +195,16 @@ def preprocess_dataset(dataset, tokenizer, image_processor):
         dataset["pixel_values"][i] = pixel_values
         dataset["labels"][i] = label
     # Debugging
-    print(100 * "#")
-    print("Pixel values before turning them into a numpy array:")
+    # print(100 * "#")
+    # print("Pixel values before turning them into a numpy array:")
     # print(test)
-    print(type(test))
-    print(100 * "#")
-    print(100 * "#")
-    print("Pixel values after turning them into a numpy array:")
+    # print(type(test))
+    # print(100 * "#")
+    # print(100 * "#")
+    # print("Pixel values after turning them into a numpy array:")
     # print(dataset["pixel_values"][0])
-    print(type(dataset["pixel_values"][0]))
-    print(100 * "#")
+    # print(type(dataset["pixel_values"][0]))
+    # print(100 * "#")
     return Dataset.from_dict(dataset)
 
 ########## COMPUTE METRICS ##########
@@ -269,7 +269,15 @@ def perform_inference_img_processor(image_path, model, image_processor, tokenize
     print(generated_text)
     
 ########## CUSTOM DATA COLLATOR ##########
-# TODO
+def custom_collator(batch):
+    """
+    Returns the output of the default data collator but with interpolate_pos_encoding set to
+    true in order to be able to use image resolutions that are not 224x224 (pretrained ViT default).
+    See: https://discuss.huggingface.co/t/fine-tuning-vit-with-more-patches-higher-resolution/18731/3
+    """
+    default_collator_output = default_data_collator(batch)
+    default_collator_output["interpolate_pos_encoding"] = True
+    return default_collator_output
 
 def main():
     if __name__ == "__main__":
@@ -297,20 +305,21 @@ def main():
         split_dataset = dataset.train_test_split(test_size=0.2)
         train_dataset = split_dataset["train"]
         eval_dataset = split_dataset["test"]
+        print(f"[{time}] main(): Dataset split into train and split dataset.")
         # Debugging
-        print(100 * "#")
-        print("dataset: " + str(dataset))
-        print("Features:")
-        print(str(dataset.features))
-        print(100 * "#")
-        print("type of dataset: " + str(type(dataset)))
-        print(100 * "#")
-        print("First dataset entry:")
-        print("pixel_values: " + str(dataset[0]["pixel_values"]))
-        print("pixel_values type: " + str(type(dataset[0]["pixel_values"])))
-        print("labels: " + str(dataset[0]["labels"]))
-        print("labels type: " + str(type(dataset[0]["labels"])))
-        print(100 * "#")
+        # print(100 * "#")
+        # print("dataset: " + str(dataset))
+        # print("Features:")
+        # print(str(dataset.features))
+        # print(100 * "#")
+        # print("type of dataset: " + str(type(dataset)))
+        # print(100 * "#")
+        # print("First dataset entry:")
+        # print("pixel_values: " + str(dataset[0]["pixel_values"]))
+        # print("pixel_values type: " + str(type(dataset[0]["pixel_values"])))
+        # print("labels: " + str(dataset[0]["labels"]))
+        # print("labels type: " + str(type(dataset[0]["labels"])))
+        # print(100 * "#")
         # set the training arguments 
         # taken from basic training example by huggingface: https://deepwiki.com/huggingface/transformers/3.1-trainer-class
         training_args = TrainingArguments(
@@ -323,12 +332,12 @@ def main():
             # TODO: load_best_model_at_end = True?
             # TODO: evaluation_strategy = "steps"?
         )
-
+        print(f"[{time}] main(): Training arguments were set.")
         trainer = Trainer(
             model=model,
             args=training_args,
             train_dataset=train_dataset,
-            data_collator=default_data_collator,
+            data_collator=custom_collator,
             eval_dataset=eval_dataset,
             tokenizer=tokenizer,
             # compute_metrics=compute_metrics, TODO: add compute_metrics function
