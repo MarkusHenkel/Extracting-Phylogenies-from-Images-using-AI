@@ -3,6 +3,7 @@ from ete3 import NCBITaxa
 from ete3 import Tree, TreeStyle, NodeStyle
 from io import StringIO 
 from numpy import random
+import random
 import datetime
 import argparse
 import matplotlib.pyplot as plt
@@ -68,7 +69,7 @@ def generate_random_taxids(amount = 10, randomize = False):
     # Add a valid taxid <amount> times
     i = 0
     while i < amount:
-        rand_taxid = random.randint(10000)
+        rand_taxid = random.randint(1,10000)
         if is_valid(rand_taxid):
             valid_rand_taxids.append(rand_taxid)
             i += 1
@@ -201,8 +202,8 @@ class TreeRender:
         """
         Solves multifurcations in the newick and the tree object using ete3's resolve_polytomy function
         """
-        print("Solving multifurcations:")
         if not self.is_multifurcating:
+            # Debugging
             print("No multifurcations found.")
             return
         print(f"Current newick: {self.newick}")
@@ -210,18 +211,14 @@ class TreeRender:
         newick_tree.resolve_polytomy(recursive=True)    
         # update the newick, so that the tree in the image and the newick match and remove support values by ete3
         self.newick = remove_support_vals(newick_tree.write())
+        print(f"Updated newick: {self.newick}")
         # ete solves polytomies by adding branches with length zero, replace them with the specified branch lengths
         if self.randomize_distances == True:
             self.newick = re.sub(r"(?<=\):)0(?=[,\)])",
                                     lambda m: str(round(random.uniform(0.00, self.max_distance), 2)), 
                                     self.newick)
-            newick_tree = Tree(self.newick)
-            print("zeros are randomized")
         else:
             self.newick = re.sub(r"(?<=\):)0(?=[,\)])", "1", self.newick)
-            newick_tree = Tree(self.newick)
-            print("zeros are replaced with ones")
-        print(f"Updated newick: {self.newick}")
         
     def save_newick_image(self, outfile_path):
         """
@@ -282,6 +279,10 @@ class TreeRender:
         """
         if not is_newick(self.newick):
             exit(f"[{time}] Error in save_newick_image_ete3: Given newick isn't valid.")
+        # solve multifurcations if they aren't allowed and update the newick if there is a multifurcation
+        if self.dont_allow_multifurcations == True and self.is_multifurcating():
+            self.solve_multifurcations()
+            print(f"[{time}] Solved multifurcation(s).")
         newick_tree = Tree(self.newick)
         treestyle = TreeStyle()
         # TODO: would it be smart to test if the AI is able to give leaves trivial names from top to bottom if the given 
@@ -308,9 +309,6 @@ class TreeRender:
             treestyle.mode = "r"
         # in ete3 0 is left to right, 1 is right to left 
         treestyle.orientation = int(self.right_to_left_orientation)
-        # solve multifurcations if they aren't allowed and update the newick if there is a multifurcation
-        if self.dont_allow_multifurcations == True and self.is_multifurcating():
-            self.solve_multifurcations()
         # save the image to a specified path or into the current working directory with a specified name
         if outfile_path:
             if not os.path.exists(os.path.dirname(outfile_path)):
@@ -365,15 +363,25 @@ class TreeRender:
         self.write_params_to_tsv(tsv_path)
         print(f"[{time}] create_output_directory: Used parameters were saved into .tsv.")
         
-# TODO: implement create_rand_treerender()
-def create_rand_treerender():
-    """
-    Generates a TreeRender object by randomizing given parameters and randomly applying given flags.
+    # TODO: implement create_rand_treerender()
+    def randomize_treerender(self):
+        """
+        When applied to a TreeRender object, randomizes the following parameters:
+        package, amount_taxa, randomize_distances, max_distance, dont_allow_multifurcations
+        This way a user that does not want to understand all parameters can create a simple but 
+        diverse dataset quickly.
 
-    Returns:
-        _type_: _description_
-    """
-    return None
+        Returns:
+            TreeRender: TreeRender object with user parameters randomized 
+        """
+        self.package = random.choice(["ete3","phylo"])
+        if self.package:
+            self.dont_allow_multifurcations = random.choice([True,False])
+        self.amount_taxa = random.randint(5,19) # range: [5, 20]
+        self.randomize_distances = random.choice([True,False])
+        if self.randomize_distances:
+            self.max_distance = random.randint(1, 10)
+        return self
 
 def ask_user_to_continue():
     while True:
@@ -396,9 +404,9 @@ def main():
         argument_parser.add_argument("-n", "--number_directories", type=int, required=False, default=1,
                                      help="""Choose the number of directories created with the chosen parameters. 
                                      Default: 1.""")
-        argument_parser.add_argument("-p", "--package", required=True, choices=["phylo", "ete3"], 
+        argument_parser.add_argument("-p", "--package", required=False, choices=["phylo", "ete3"], default="ete3",
                                      help="Specify which package is used in the creation of the image. \
-                                         Choose between Biopython.Phylo and ETE3 Toolkit.")
+                                         Choose between Biopython.Phylo and ETE3 Toolkit. Default: ete3.")
         argument_parser.add_argument('-a', '--amount_taxa', required=False, type=int, default=10,
                                      help='Type=Int. Choose the preferred amount of generated taxa. Default: 10.')
         argument_parser.add_argument('-ra', '--randomize_amount', required=False, action='store_true', default=False,
@@ -431,10 +439,16 @@ def main():
         argument_parser.add_argument("-vm", "--branch_vertical_margin", required=False, type=int, 
                                      help="""ETE3 only. Amount of pixels between two adjacent branches. 
                                      Should not be smaller than 5. Default: 10 pixels.""")
-        # argument_parser.add_argument("--create_dataset", required=False, action="store_true", default=False,
-        #                              help="""On/Off flag. Quickly create a whole dataset instead of one type of image by specifying 
-        #                              --create_dataset. This will randomize other specified parameters and randomly apply 
-        #                              specified flags.""")
+        argument_parser.add_argument(
+            "--create_rand_dataset", 
+            required=False, 
+            action="store_true", 
+            default=False,
+            help="""On/Off flag. Quickly create a diverse dataset instead of one type of image by specifying 
+            --create_dataset. This will randomize the following parameters and flags within reasonable ranges: 
+            package, amount_taxa, randomize_distances, max_distance, dont_allow_multifurcations. 
+            --number_directories sets the size of the dataset."""
+        )
         # Specified parameters
         args = argument_parser.parse_args()
         # if the amount of taxa is not specified it defaults to 10 taxa
@@ -450,7 +464,7 @@ def main():
         dont_allow_multifurcations = args.dont_allow_multifurcations
         right_to_left_orientation = args.right_to_left_orientation 
         branch_vertical_margin = args.branch_vertical_margin
-        # create_dataset = args.create_dataset
+        create_rand_dataset = args.create_rand_dataset
         ########## CHECKS ##########
         # warn user if they use ete3 parameters with a module other than ete3
         if (not package == "ete3") and (
@@ -475,8 +489,6 @@ def main():
                 right_to_left_orientation = False
             print(f"[{time}] Resetting ete3 parameters. Do you want to proceed?")
             ask_user_to_continue()
-        
-        # if create_dataset is not specified, one of the two
         if number_directories < 1:
             exit(f"[{time}] --number_directories {number_directories} not valid. Has to be positive integer > 1.")
         # warn user if he wants to create more than one image
@@ -517,24 +529,7 @@ def main():
             # unique file ID is just the current time (hour, minute, second, microsecond)
             # could be shortened to second and microsecond maybe
             file_id = str(datetime.datetime.now().strftime(r"%H%M%S%f"))
-            print(f"Default file ID: {file_id}")
-            print("Parameters:")
-            print(f"  Randomize distances: {randomize_distances}")
-            print(f"  {f"Max distance: {max_distance}" if randomize_distances else "Distances: all exactly 1"}")
-            print(f"  Randomize amount of taxa: {randomize_amount}")
-            print(f"  {f"Amount of taxa: {amount_taxa}" if not randomize_amount else f"Specified amount of taxa: {amount_taxa}, actual amount: {len(random_taxids)}"}")
-            print(f"  Circular tree: {circular_tree}")
-            print(f"  Used package: {package}")
-            print(f"  Orientation: {"left to right" if not right_to_left_orientation else "right to left"}")
-            print(f"  Don't allow multifurcations: {dont_allow_multifurcations}")
-            print(f"  Vertical margin for adjacent branches: {branch_vertical_margin}")
-            print("Newick:")
-            print(f"  {newick_with_taxa}")
-            # instantiate treerender object
-            # if create_dataset:
-            #     # create a treerender object by randomizing the given parameters and flags 
-            #     create_rand_treerender()
-            # else:
+            ########## INSTANTIATING TREERENDER OBJECT ##########
             tree_render = TreeRender(
                 newick=newick_with_taxa,
                 randomize_distances = randomize_distances,
@@ -549,10 +544,25 @@ def main():
                 dont_allow_multifurcations=dont_allow_multifurcations,
                 branch_vertical_margin=branch_vertical_margin
             )
+            # if the user wants to generate a dataset with randomized parameters
+            if create_rand_dataset:
+                tree_render.randomize_treerender()
             # save directory to outfile path if it was specified. If not create the generated data directory with the data directory inside
             # do this multiple times if specified
             tree_render.create_output_directory()
-    
+            print(f"Default file ID: {file_id}")
+            print("Parameters:")
+            print(f"  Randomize distances: {randomize_distances}")
+            print(f"  {f"Max distance: {max_distance}" if randomize_distances else "Distances: all exactly 1"}")
+            print(f"  Randomize amount of taxa: {randomize_amount}")
+            print(f"  {f"Amount of taxa: {amount_taxa}" if not randomize_amount else f"Specified amount of taxa: {amount_taxa}, actual amount: {len(random_taxids)}"}")
+            print(f"  Circular tree: {circular_tree}")
+            print(f"  Used package: {package}")
+            print(f"  Orientation: {"left to right" if not right_to_left_orientation else "right to left"}")
+            print(f"  Don't allow multifurcations: {dont_allow_multifurcations}")
+            print(f"  Vertical margin for adjacent branches: {branch_vertical_margin}") if package == "ete3" else None
+            print("Newick:")
+            print(f"  {newick_with_taxa}")
 # execute the main method
 main()
 
