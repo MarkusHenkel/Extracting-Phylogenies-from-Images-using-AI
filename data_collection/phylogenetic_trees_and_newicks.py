@@ -204,14 +204,14 @@ class TreeRender:
         """
         if not self.is_multifurcating:
             # Debugging
-            print("No multifurcations found.")
+            # print("No multifurcations found.")
             return
-        print(f"Current newick: {self.newick}")
+        # print(f"Current newick: {self.newick}")
         newick_tree = Tree(self.newick)
         newick_tree.resolve_polytomy(recursive=True)    
         # update the newick, so that the tree in the image and the newick match and remove support values by ete3
         self.newick = remove_support_vals(newick_tree.write())
-        print(f"Updated newick: {self.newick}")
+        # print(f"Updated newick: {self.newick}")
         # ete solves polytomies by adding branches with length zero, replace them with the specified branch lengths
         if self.randomize_distances == True:
             self.newick = re.sub(r"(?<=\):)0(?=[,\)])",
@@ -367,7 +367,7 @@ class TreeRender:
     def randomize_treerender(self):
         """
         When applied to a TreeRender object, randomizes the following parameters:
-        package, amount_taxa, randomize_distances, max_distance, dont_allow_multifurcations
+        package, amount_taxa, randomize_distances, max_distance, dont_allow_multifurcations, branch_vertical_margin
         This way a user that does not want to understand all parameters can create a simple but 
         diverse dataset quickly.
 
@@ -375,8 +375,9 @@ class TreeRender:
             TreeRender: TreeRender object with user parameters randomized 
         """
         self.package = random.choice(["ete3","phylo"])
-        if self.package:
+        if self.package == "ete3":
             self.dont_allow_multifurcations = random.choice([True,False])
+            self.branch_vertical_margin = random.randint(10, 100)
         self.amount_taxa = random.randint(5,19) # range: [5, 20]
         self.randomize_distances = random.choice([True,False])
         if self.randomize_distances:
@@ -446,7 +447,7 @@ def main():
             default=False,
             help="""On/Off flag. Quickly create a diverse dataset instead of one type of image by specifying 
             --create_dataset. This will randomize the following parameters and flags within reasonable ranges: 
-            package, amount_taxa, randomize_distances, max_distance, dont_allow_multifurcations. 
+            package, amount_taxa, randomize_distances, max_distance, dont_allow_multifurcations, branch_vertical_margin. 
             --number_directories sets the size of the dataset."""
         )
         # Specified parameters
