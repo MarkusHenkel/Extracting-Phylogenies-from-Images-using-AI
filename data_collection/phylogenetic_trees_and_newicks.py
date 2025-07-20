@@ -161,7 +161,7 @@ class TreeRender:
         package,
         file_id = None,
         outdir_path = None, # Path to the directory where output directory is created at
-        display_branch_lengths = True, 
+        dont_display_lengths= False, 
         circular_tree = False, 
         right_to_left_orientation = False, # if False then default orientation left to right is applied
         dont_allow_multifurcations = True,
@@ -175,7 +175,7 @@ class TreeRender:
         self.package = package
         self.file_id = file_id
         self.outdir_path = outdir_path
-        self.display_branch_lengths = display_branch_lengths
+        self.dont_display_lengths = dont_display_lengths
         self.circular_tree = circular_tree
         self.right_to_left_orientation = right_to_left_orientation
         self.dont_allow_multifurcations = dont_allow_multifurcations
@@ -252,10 +252,10 @@ class TreeRender:
         axes = fig.add_subplot(1, 1, 1)
         newick_tree.rooted = True
         plt.axis("off")
-        if self.display_branch_lengths:
-            Phylo.draw(newick_tree, axes=axes, do_show=False, branch_labels=lambda c: c.branch_length)
-        else: 
+        if self.dont_display_lengths:
             Phylo.draw(newick_tree, axes=axes, do_show=False, branch_labels=lambda c: None)
+        else: 
+            Phylo.draw(newick_tree, axes=axes, do_show=False, branch_labels=lambda c: c.branch_length)
         if outfile_path:
             if not os.path.exists(os.path.dirname(outfile_path)):
                 os.makedirs(os.path.dirname(outfile_path), exist_ok=True)
@@ -291,7 +291,7 @@ class TreeRender:
         treestyle.show_leaf_name = True
         # TODO: depending on how common this is it might be interesting to test if the AI can differentiate both of the values
         treestyle.show_branch_support = False # branch support currently isnt shown 
-        treestyle.show_branch_length = self.display_branch_lengths
+        treestyle.show_branch_length = not self.dont_display_lengths
         # treestyle.scale = 100 # 100 pixels per branch length unit
         # default margin is 10 pixels
         if self.branch_vertical_margin:
@@ -328,7 +328,7 @@ class TreeRender:
         tsv_header = "random_distances\tmax_distance\tamount_taxa\tpackage\tbranch_lengths\tcircular_tree\t"
         tsv_header += f"right_to_left_orientation\tmultifurcations\tbranch_vertical_margin[px]\n"
         params = f"{self.randomize_distances}\t{self.max_distance}\t{self.amount_taxa}\t"
-        params += f"{self.package}\t{self.display_branch_lengths}\t{self.circular_tree}\t"
+        params += f"{self.package}\t{self.dont_display_lengths}\t{self.circular_tree}\t"
         params += f"{self.right_to_left_orientation}\t{not self.dont_allow_multifurcations}\t{self.branch_vertical_margin}" 
         with open(outfile_path, "w") as tsv_file:
             tsv_file.write(tsv_header)
@@ -419,9 +419,9 @@ def main():
         argument_parser.add_argument('-md', '--max_distance', required=False, type=int, default=1,
                                      help="""Type=Int. If distances are randomized this will be the maximum distance. 
                                      Default: 1.""")
-        argument_parser.add_argument("-db", "--display_branch_lengths", required=False, action="store_true", default=True,
-                                     help="""On/Off flag. If specified then all branch lengths are added to the 
-                                     corresponding branch in the image. Default: True""")
+        argument_parser.add_argument("-db", "--dont_display_lengths", required=False, action="store_true", default=False,
+                                     help="""On/Off flag. If specified then no branch lengths will be displayed. 
+                                     Default: False.""")
         argument_parser.add_argument("-o", "--outdir_path", required=False, type=str,
                                      help="""If specified the directory containing the Newick and the corresponding 
                                      image will be saved to this path. If the path points to a directory that
@@ -458,7 +458,7 @@ def main():
         randomize_amount = args.randomize_amount
         randomize_distances = args.randomize_distances
         max_distance = args.max_distance
-        display_branch_lengths= args.display_branch_lengths
+        dont_display_lengths= args.dont_display_lengths
         outdir_path = args.outdir_path
         package = args.package
         circular_tree = args.circular_tree
@@ -501,8 +501,6 @@ def main():
         # execute module <number_directories> times
         for i in range(number_directories):
             # if amount of taxa and randomize_amount are specified then call generate_random_taxids() with the amount of taxa and randomize set to True
-            # TODO: remove this line?
-            random_taxids = []
             # TODO: refactor
             # -a and -r specified
             if amount_taxa != None and randomize_amount == True:
@@ -539,7 +537,7 @@ def main():
                 outdir_path=outdir_path,
                 file_id=file_id,
                 package=package,
-                display_branch_lengths=display_branch_lengths,
+                dont_display_lengths=dont_display_lengths,
                 circular_tree=circular_tree,
                 right_to_left_orientation=right_to_left_orientation,
                 dont_allow_multifurcations=dont_allow_multifurcations,
@@ -562,6 +560,7 @@ def main():
             print(f"  Orientation: {"left to right" if not right_to_left_orientation else "right to left"}")
             print(f"  Don't allow multifurcations: {dont_allow_multifurcations}")
             print(f"  Vertical margin for adjacent branches: {branch_vertical_margin}") if package == "ete3" else None
+            print(f"  Branch lengths displayed: {not dont_display_lengths}")
             print("Newick:")
             print(f"  {newick_with_taxa}")
 # execute the main method
