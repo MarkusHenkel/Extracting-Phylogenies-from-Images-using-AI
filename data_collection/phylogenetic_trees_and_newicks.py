@@ -404,7 +404,8 @@ class TreeRender:
     def randomize_treerender(self):
         """
         When applied to a TreeRender object, randomizes the following parameters:
-        package, amount_taxa, randomize_distances, max_distance, dont_allow_multifurcations, branch_vertical_margin
+        package, amount_taxa, randomize_distances, max_distance, dont_allow_multifurcations, branch_vertical_margin,
+        fontsize, linewidth
         This way a user that does not want to understand all parameters can create a simple but 
         diverse dataset quickly.
 
@@ -415,6 +416,13 @@ class TreeRender:
         if self.package == "ete3":
             self.dont_allow_multifurcations = random.choice([True,False])
             self.branch_vertical_margin = random.randint(10, 100)
+            self.fontsize = random.randint(8,50)
+            self.linewidth = random.randint(1,20)
+        if self.package == "phylo":
+            self.fontsize = random.randint(8,50)
+            # TODO: until no solution for increasing the branch length offset is found the linewidth cant be increased
+            # for phylo because it omits the branch lengths
+            self.linewidth = 1
         self.amount_taxa = random.randint(5,19) # range: [5, 20]
         self.randomize_distances = random.choice([True,False])
         if self.randomize_distances:
@@ -446,7 +454,8 @@ def main():
             default=False,
             help="""On/Off flag. Quickly create a diverse dataset instead of one type of image by specifying 
             --create_dataset. This will randomize the following parameters and flags within reasonable ranges: 
-            package, amount_taxa, randomize_distances, max_distance, dont_allow_multifurcations, branch_vertical_margin. 
+            package, amount_taxa, randomize_distances, max_distance, dont_allow_multifurcations, branch_vertical_margin, 
+            fontsize, linewidth. 
             --number_directories sets the size of the dataset."""
         )
         argument_parser.add_argument("-o", "--outdir_path", required=False, type=str,
@@ -522,6 +531,9 @@ def main():
             elif package == "phylo":
                 linewidth = 2
         ########## CHECKS ##########
+        # negative or zero linewidth is set to 1
+        if package == "ete3" and linewidth <= 0:
+            linewidth = 1
         # warn user if they use ete3 parameters with a module other than ete3
         if (not package == "ete3") and (
             branch_vertical_margin or 
