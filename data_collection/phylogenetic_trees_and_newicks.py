@@ -426,7 +426,7 @@ class TreeRender:
             # TODO: until no solution for increasing the branch length offset is found the linewidth cant be increased
             # for phylo because it omits the branch lengths
             self.linewidth = 1
-        self.amount_taxa = random.randint(5,19) # range: [5, 20]
+        self.amount_taxa = random.randint(5,20) # range: [5, 20]
         self.randomize_distances = random.choice([True,False])
         if self.randomize_distances:
             self.max_distance = random.randint(1, 10)
@@ -480,9 +480,6 @@ def main():
                                      Choose between Bio.Phylo and ETE3 Toolkit. Default: ete3.""")
         argument_parser.add_argument('-a', '--amount_taxa', required=False, type=int, default=10,
                                      help='Type=Int. Choose the preferred amount of generated taxa. Default: 10.')
-        argument_parser.add_argument('-ra', '--randomize_amount', required=False, action='store_true', default=False,
-                                     help="""On/Off flag. Randomizes the amount of taxa generated. Range: 2 to 
-                                     <amount_taxa>. Default: False.""")
         argument_parser.add_argument('-rd', '--randomize_distances', required=False, action="store_true", default=False,
                                      help="""On/Off flag. If specified the distances (branch lengths) will be 
                                      randomized. Default: False.""")
@@ -509,7 +506,6 @@ def main():
         # if the amount of taxa is not specified it defaults to 10 taxa
         number_directories = args.number_directories
         amount_taxa = args.amount_taxa
-        randomize_amount = args.randomize_amount
         randomize_distances = args.randomize_distances
         max_distance = args.max_distance
         dont_display_lengths= args.dont_display_lengths
@@ -570,37 +566,12 @@ def main():
         print("Data generation for extracting phylogenies from images using AI.")
         # execute module <number_directories> times
         for i in range(number_directories):
-            # if amount of taxa and randomize_amount are specified then call generate_random_taxids() with the amount of taxa and randomize set to True
-            # TODO: refactor
-            # -a and -r specified
-            if amount_taxa != None and randomize_amount == True:
-                random_taxids = generate_random_taxids(amount=amount_taxa, randomize=True)
-                newick_with_taxids = generate_newick_tree(random_taxids)
-                newick_with_taxa = translate_newick_tree(newick_with_taxids)
-            # -a specified, -r=False
-            elif amount_taxa != None and randomize_amount == False:
-                random_taxids = generate_random_taxids(amount=amount_taxa)
-                newick_with_taxids = generate_newick_tree(random_taxids)
-                newick_with_taxa = translate_newick_tree(newick_with_taxids)
-            # -r specified, -a=None
-            elif amount_taxa == None and randomize_amount == True:
-                random_taxids = generate_random_taxids(randomize=True)
-                newick_with_taxids = generate_newick_tree(random_taxids)
-                newick_with_taxa = translate_newick_tree(newick_with_taxids)
-            # neither specified, -a=None, -r=False
-            else:
-                random_taxids = generate_random_taxids()
-                newick_with_taxids = generate_newick_tree(random_taxids)
-                newick_with_taxa = translate_newick_tree(newick_with_taxids)
-            # randomize the distances if a max distance is specified
-            if randomize_distances:
-                newick_with_taxa = randomize_distances_func(newick_with_taxa, max_distance)
             # unique file ID is just the current time (hour, minute, second, microsecond)
             # could be shortened to second and microsecond maybe
             file_id = str(datetime.datetime.now().strftime(r"%H%M%S%f"))
             ########## INSTANTIATING TREERENDER OBJECT ##########
             tree_render = TreeRender(
-                newick=newick_with_taxa,
+                newick="", # initialize with empty string, finished newick is added at a later point
                 randomize_distances = randomize_distances,
                 max_distance=max_distance,
                 amount_taxa=amount_taxa,
@@ -618,25 +589,41 @@ def main():
             # if the user wants to generate a dataset with randomized parameters
             if create_rand_dataset:
                 tree_render.randomize_treerender()
-            # save directory to outfile path if it was specified. If not create the generated data directory with the data directory inside
-            # do this multiple times if specified
+            ########## CREATE THE NEWICK ##########
+            if tree_render.amount_taxa:
+                random_taxids = generate_random_taxids(amount=tree_render.amount_taxa)
+                newick_with_taxids = generate_newick_tree(random_taxids)
+                newick_with_taxa = translate_newick_tree(newick_with_taxids)
+            else:
+                # let the amount of taxa default to 10 if amount_taxa wasnt specified
+                random_taxids = generate_random_taxids()
+                newick_with_taxids = generate_newick_tree(random_taxids)
+                newick_with_taxa = translate_newick_tree(newick_with_taxids)
+            # randomize the distances if a max distance is specified
+            if tree_render.randomize_distances:
+                newick_with_taxa = randomize_distances_func(newick_with_taxa, tree_render.max_distance)
+            # set the finished newick as the treerenders newick
+            tree_render.newick = newick_with_taxa
+            # save directory to outfile path if it was specified
+            # If not create the generated data directory with the data directory inside
             tree_render.create_output_directory()
             print(f"Default file ID: {file_id}")
             print("Parameters:")
-            print(f"  Fontsize: {fontsize}")
-            print(f"  Linewidth: {linewidth}")
-            print(f"  Randomize distances: {randomize_distances}")
-            print(f"  {f"Max distance: {max_distance}" if randomize_distances else "Distances: all exactly 1"}")
-            print(f"  Randomize amount of taxa: {randomize_amount}")
-            print(f"  {f"Amount of taxa: {amount_taxa}" if not randomize_amount else f"Specified amount of taxa: {amount_taxa}, actual amount: {len(random_taxids)}"}")
-            print(f"  Circular tree: {circular_tree}")
-            print(f"  Used package: {package}")
-            print(f"  Orientation: {"left to right" if not right_to_left_orientation else "right to left"}")
-            print(f"  Don't allow multifurcations: {dont_allow_multifurcations}")
-            print(f"  Vertical margin for adjacent branches: {branch_vertical_margin}") if package == "ete3" else None
-            print(f"  Branch lengths displayed: {not dont_display_lengths}")
+            print(f"  Fontsize: {tree_render.fontsize}")
+            print(f"  Linewidth: {tree_render.linewidth}")
+            print(f"  Randomize distances: {tree_render.randomize_distances}")
+            print(f"  {f"Max distance: {tree_render.max_distance}" if tree_render.randomize_distances \
+                else "Distances: all exactly 1"}")
+            print(f"  Amount of taxa: {tree_render.amount_taxa}")
+            print(f"  Circular tree: {tree_render.circular_tree}")
+            print(f"  Used package: {tree_render.package}")
+            print(f"  Orientation: {"left to right" if not tree_render.right_to_left_orientation else "right to left"}")
+            print(f"  Don't allow multifurcations: {tree_render.dont_allow_multifurcations}")
+            print(f"  Vertical margin for adjacent branches: {tree_render.branch_vertical_margin}") \
+                if tree_render.package == "ete3" else None
+            print(f"  Branch lengths displayed: {not tree_render.dont_display_lengths}")
             print("Newick:")
-            print(f"  {newick_with_taxa}")
+            print(f"  {tree_render.newick}")
 # execute the main method
 main()
 
