@@ -1,11 +1,12 @@
 from Bio import Phylo
 from ete3 import NCBITaxa
-from ete3 import Tree, TreeStyle, NodeStyle
+from ete3 import Tree, TreeStyle, NodeStyle, AttrFace, faces
 from io import StringIO 
 from numpy import random
 import random
 import datetime
 import argparse
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import re
 import os
@@ -155,6 +156,8 @@ class TreeRender:
     def __init__(
         self, 
         newick, 
+        fontsize,
+        linewidth,
         randomize_distances, # attributes of newick string itself not the render
         max_distance, # attributes of newick string itself not the render
         amount_taxa, # attributes of newick string itself not the render
@@ -165,7 +168,7 @@ class TreeRender:
         circular_tree = False, 
         right_to_left_orientation = False, # if False then default orientation left to right is applied
         dont_allow_multifurcations = True,
-        branch_vertical_margin = 10 # number of pixels between adjacent branches
+        branch_vertical_margin = 10, # number of pixels between adjacent branches
         ):
         # Attributes
         self.newick = newick
@@ -180,6 +183,8 @@ class TreeRender:
         self.right_to_left_orientation = right_to_left_orientation
         self.dont_allow_multifurcations = dont_allow_multifurcations
         self.branch_vertical_margin = branch_vertical_margin
+        self.fontsize = fontsize
+        self.linewidth = linewidth
     
     def is_multifurcating(self):
         """
@@ -247,26 +252,29 @@ class TreeRender:
             print(f"[{time}] Error in save_newick_image(): Newick string doesn't have valid formatting.")
         # make the the newick tree (string) into a file so that it can be drawn by bio.phylo 
         newick_tree = Phylo.read(StringIO(self.newick), "newick")
-        # create a matplotlib figure and 
+        # create a matplotlib figure 
         fig = plt.figure(figsize=(30, 20), dpi=150)
         axes = fig.add_subplot(1, 1, 1)
+        # set line width and fontsize
+        mpl.rcParams['lines.linewidth'] = self.linewidth # reasonable range: [1,10]
+        mpl.rcParams['font.size'] = self.fontsize # reasonable range: [8,30]
         newick_tree.rooted = True
         plt.axis("off")
         if self.dont_display_lengths:
             Phylo.draw(newick_tree, axes=axes, do_show=False, branch_labels=lambda c: None)
         else: 
             Phylo.draw(newick_tree, axes=axes, do_show=False, branch_labels=lambda c: c.branch_length)
+        ###### DEBUGGING
+        # plt.show() # show the tree instead of writing a file each time
         if outfile_path:
             if not os.path.exists(os.path.dirname(outfile_path)):
                 os.makedirs(os.path.dirname(outfile_path), exist_ok=True)
-                plt.axis("off")
                 plt.savefig(outfile_path, bbox_inches='tight') 
                 print(f"[{time}] save_newick_image_phylo: Image was saved to newly created directory.")
             else: 
                 plt.savefig(outfile_path, bbox_inches='tight')
                 print(f"[{time}] save_newick_image_phylo: Image was saved to specified directory.")
         else:
-            plt.axis("off")
             plt.savefig(f"phylo_tree_{self.file_id}.jpg", bbox_inches='tight')
         plt.close()
         
@@ -279,21 +287,45 @@ class TreeRender:
         """
         if not is_newick(self.newick):
             exit(f"[{time}] Error in save_newick_image_ete3: Given newick isn't valid.")
+        # create ete3 Tree object 
+        newick_tree = Tree(self.newick)
+        # create treestyle object to adjust tree properties of Tree object
+        treestyle = TreeStyle()
+        # create nodestyle object to adjust node and edge properties of Tree object
+        nodestyle = NodeStyle()
         # solve multifurcations if they aren't allowed and update the newick if there is a multifurcation
         if self.dont_allow_multifurcations == True and self.is_multifurcating():
             self.solve_multifurcations()
             print(f"[{time}] Solved multifurcation(s).")
-        newick_tree = Tree(self.newick)
-        treestyle = TreeStyle()
+        # adjust line width
+        nodestyle["vt_line_width"] = self.linewidth # reasonable range: [1,10]
+        nodestyle["hz_line_width"] = self.linewidth # reasonable range: [1,10]
+        # apply nodestyle adjustments to the whole tree
+        for node in newick_tree.traverse():
+            node.set_style(node_style=nodestyle)
+        # adjust fontsize 
+        fontsize = self.fontsize # reasonable range: [8,30]
+        # create layout for adjusting the fontsize of taxa and distances
+        def layout(node):
+            if node.is_leaf():
+                # create face for taxon with chosen fontsize
+                taxa_face = faces.AttrFace("name", fsize=fontsize)
+                # apply face to the current leaf
+                faces.add_face_to_node(taxa_face, node, column=0)
+            if not node.is_root():
+                # create face for the distance 
+                dist_face = faces.AttrFace(f"dist", fsize=fontsize)
+                # apply face to the current node
+                faces.add_face_to_node(dist_face, node, column=0, position="branch-top")
+        # set the layout
+        treestyle.layout_fn = layout
         # TODO: would it be smart to test if the AI is able to give leaves trivial names from top to bottom if the given 
         # tree doesnt have taxa? 
-        # currently all leaf names are shown
-        treestyle.show_leaf_name = True
-        # TODO: depending on how common this is it might be interesting to test if the AI can differentiate both of the values
+        treestyle.show_leaf_name = True # currently all leaf names are shown
         treestyle.show_branch_support = False # branch support currently isnt shown 
         treestyle.show_branch_length = not self.dont_display_lengths
         # treestyle.scale = 100 # 100 pixels per branch length unit
-        # default margin is 10 pixels
+        # set default margin is 10 pixels
         if self.branch_vertical_margin:
             if self.branch_vertical_margin < 10:
                 treestyle.branch_vertical_margin = 10
@@ -309,6 +341,11 @@ class TreeRender:
             treestyle.mode = "r"
         # in ete3 0 is left to right, 1 is right to left 
         treestyle.orientation = int(self.right_to_left_orientation)
+        # creating text faces for adjusting fontsize does not replace the default font, turn off the default font 
+        treestyle.show_leaf_name = False
+        treestyle.show_branch_length = False
+        ###### DEBUGGING
+        # newick_tree.show(tree_style=treestyle) # show the tree instead of writing a file each time
         # save the image to a specified path or into the current working directory with a specified name
         if outfile_path:
             if not os.path.exists(os.path.dirname(outfile_path)):
@@ -402,12 +439,33 @@ def main():
             description="Data Collection for Extracting phylogenies from images using AI"
         )
         ########## ARGUMENTS ##########
+        argument_parser.add_argument(
+            "--create_rand_dataset", 
+            required=False, 
+            action="store_true", 
+            default=False,
+            help="""On/Off flag. Quickly create a diverse dataset instead of one type of image by specifying 
+            --create_dataset. This will randomize the following parameters and flags within reasonable ranges: 
+            package, amount_taxa, randomize_distances, max_distance, dont_allow_multifurcations, branch_vertical_margin. 
+            --number_directories sets the size of the dataset."""
+        )
+        argument_parser.add_argument("-o", "--outdir_path", required=False, type=str,
+                                     help="""If specified the directory containing the Newick and the corresponding 
+                                     image will be saved to this path. If the path points to a directory that
+                                     doesn't exist it will be created, path can't point to a file. If not specified
+                                     then a generated_data directory will be created in the current working 
+                                     directory.""")
         argument_parser.add_argument("-n", "--number_directories", type=int, required=False, default=1,
                                      help="""Choose the number of directories created with the chosen parameters. 
                                      Default: 1.""")
+        argument_parser.add_argument("-f", "--fontsize", type=int, required=False, 
+                                     help="""Choose the size of the font. Also applies to branch lengths if applicable. 
+                                     Default: 8 (ETE3), 16 (Bio.Phylo)""")
+        argument_parser.add_argument("-l", "--linewidth", type=int, required=False, 
+                                     help="Choose the width of branches in pixels. Default: 1 (ETE3), 2 (Bio.Phylo)")
         argument_parser.add_argument("-p", "--package", required=False, choices=["phylo", "ete3"], default="ete3",
-                                     help="Specify which package is used in the creation of the image. \
-                                         Choose between Biopython.Phylo and ETE3 Toolkit. Default: ete3.")
+                                     help="""Specify which package is used in the creation of the image. 
+                                     Choose between Bio.Phylo and ETE3 Toolkit. Default: ete3.""")
         argument_parser.add_argument('-a', '--amount_taxa', required=False, type=int, default=10,
                                      help='Type=Int. Choose the preferred amount of generated taxa. Default: 10.')
         argument_parser.add_argument('-ra', '--randomize_amount', required=False, action='store_true', default=False,
@@ -422,15 +480,9 @@ def main():
         argument_parser.add_argument("-db", "--dont_display_lengths", required=False, action="store_true", default=False,
                                      help="""On/Off flag. If specified then no branch lengths will be displayed. 
                                      Default: False.""")
-        argument_parser.add_argument("-o", "--outdir_path", required=False, type=str,
-                                     help="""If specified the directory containing the Newick and the corresponding 
-                                     image will be saved to this path. If the path points to a directory that
-                                     doesn't exist it will be created, path can't point to a file. If not specified
-                                     then a generated_data directory will be created in the current working 
-                                     directory.""")
         argument_parser.add_argument("-c", "--circular_tree", required=False, action="store_true", default=False,
                                      help="""On/Off flag. ETE3 only. If True the tree in the image will be in 
-                                         circular format. Default: False.""")
+                                     circular format. Default: False.""")
         argument_parser.add_argument("-rl", "--right_to_left_orientation", required=False, action="store_true", 
                                      default=False,help="""On/Off flag. ETE only. Specify if tree is oriented from 
                                      right to left (taxa on the left). Default: False (left to right orientation)""")
@@ -440,16 +492,6 @@ def main():
         argument_parser.add_argument("-vm", "--branch_vertical_margin", required=False, type=int, 
                                      help="""ETE3 only. Amount of pixels between two adjacent branches. 
                                      Should not be smaller than 5. Default: 10 pixels.""")
-        argument_parser.add_argument(
-            "--create_rand_dataset", 
-            required=False, 
-            action="store_true", 
-            default=False,
-            help="""On/Off flag. Quickly create a diverse dataset instead of one type of image by specifying 
-            --create_dataset. This will randomize the following parameters and flags within reasonable ranges: 
-            package, amount_taxa, randomize_distances, max_distance, dont_allow_multifurcations, branch_vertical_margin. 
-            --number_directories sets the size of the dataset."""
-        )
         # Specified parameters
         args = argument_parser.parse_args()
         # if the amount of taxa is not specified it defaults to 10 taxa
@@ -466,6 +508,19 @@ def main():
         right_to_left_orientation = args.right_to_left_orientation 
         branch_vertical_margin = args.branch_vertical_margin
         create_rand_dataset = args.create_rand_dataset
+        fontsize = args.fontsize
+        linewidth = args.linewidth
+        # set the default values of fontsize and linewidth
+        if not fontsize:
+            if package == "ete3":
+                fontsize = 8
+            elif package == "phylo":
+                fontsize = 16
+        if not linewidth:
+            if package == "ete3":
+                linewidth = 1
+            elif package == "phylo":
+                linewidth = 2
         ########## CHECKS ##########
         # warn user if they use ete3 parameters with a module other than ete3
         if (not package == "ete3") and (
@@ -541,7 +596,9 @@ def main():
                 circular_tree=circular_tree,
                 right_to_left_orientation=right_to_left_orientation,
                 dont_allow_multifurcations=dont_allow_multifurcations,
-                branch_vertical_margin=branch_vertical_margin
+                branch_vertical_margin=branch_vertical_margin,
+                fontsize=fontsize,
+                linewidth=linewidth
             )
             # if the user wants to generate a dataset with randomized parameters
             if create_rand_dataset:
