@@ -363,10 +363,13 @@ class TreeRender:
         This is done for each image seperately.
         """
         tsv_header = "random_distances\tmax_distance\tamount_taxa\tpackage\tbranch_lengths\tcircular_tree\t"
-        tsv_header += f"right_to_left_orientation\tmultifurcations\tbranch_vertical_margin[px]\n"
+        tsv_header += "right_to_left_orientation\tmultifurcations\tbranch_vertical_margin[px]\t"
+        tsv_header += "fontsize\tlinewidth[px]"
+        tsv_header += "\n"
         params = f"{self.randomize_distances}\t{self.max_distance}\t{self.amount_taxa}\t"
         params += f"{self.package}\t{self.dont_display_lengths}\t{self.circular_tree}\t"
-        params += f"{self.right_to_left_orientation}\t{not self.dont_allow_multifurcations}\t{self.branch_vertical_margin}" 
+        params += f"{self.right_to_left_orientation}\t{not self.dont_allow_multifurcations}\t"
+        params += f"{self.branch_vertical_margin}\t{self.fontsize}\t{self.linewidth}\t" 
         with open(outfile_path, "w") as tsv_file:
             tsv_file.write(tsv_header)
             tsv_file.write(params)       
@@ -620,6 +623,8 @@ def main():
             tree_render.create_output_directory()
             print(f"Default file ID: {file_id}")
             print("Parameters:")
+            print(f"  Fontsize: {fontsize}")
+            print(f"  Linewidth: {linewidth}")
             print(f"  Randomize distances: {randomize_distances}")
             print(f"  {f"Max distance: {max_distance}" if randomize_distances else "Distances: all exactly 1"}")
             print(f"  Randomize amount of taxa: {randomize_amount}")
