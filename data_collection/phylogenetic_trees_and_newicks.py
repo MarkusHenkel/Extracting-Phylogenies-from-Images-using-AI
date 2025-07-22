@@ -312,7 +312,8 @@ class TreeRender:
                 taxa_face = faces.AttrFace("name", fsize=fontsize)
                 # apply face to the current leaf
                 faces.add_face_to_node(taxa_face, node, column=0)
-            if not node.is_root():
+            # if dont_display_lengths == True, then dont create faces for distances
+            if not self.dont_display_lengths and not node.is_root():
                 # create face for the distance 
                 dist_face = faces.AttrFace(f"dist", fsize=fontsize)
                 # apply face to the current node
@@ -323,7 +324,6 @@ class TreeRender:
         # tree doesnt have taxa? 
         treestyle.show_leaf_name = True # currently all leaf names are shown
         treestyle.show_branch_support = False # branch support currently isnt shown 
-        treestyle.show_branch_length = not self.dont_display_lengths
         # treestyle.scale = 100 # 100 pixels per branch length unit
         # set default margin is 10 pixels
         if self.branch_vertical_margin:
@@ -431,7 +431,11 @@ class TreeRender:
         if self.randomize_distances:
             self.max_distance = random.randint(1, 10)
         return self
-
+    
+    def remove_distances(self):
+        """
+        Function for creating hierarchy-only tree renders. Removes distances 
+        """
 def ask_user_to_continue():
     while True:
         print("Yes[y]/No[n]?")
@@ -442,7 +446,7 @@ def ask_user_to_continue():
         elif yes_or_no == "y":
             print("Continuing.")
             break  
-        
+      
 def main():
     # prevent execution of the whole module when calling it in other modules
     if __name__ == '__main__': 
@@ -459,7 +463,18 @@ def main():
             --create_dataset. This will randomize the following parameters and flags within reasonable ranges: 
             package, amount_taxa, randomize_distances, max_distance, dont_allow_multifurcations, branch_vertical_margin, 
             fontsize, linewidth. 
-            --number_directories sets the size of the dataset."""
+            --number_directories sets the size of the dataset. --hierarchy_only removes distances from the newick and 
+            the image of each directory created with --create_rand_dataset."""
+        )
+        argument_parser.add_argument(
+            "--hierarchy_only",
+            required=False,
+            action="store_true",
+            default=False,
+            help="""On/Off flag. If specified removes distances from newick and image of the created directory. This is 
+            helpful for creating datasets used for an initial training step in which models are just trained to recognize
+            the tree's hierarchy and not yet the branch lenghts. Can be combined with --create_rand_dataset. Default:
+            False."""
         )
         argument_parser.add_argument("-o", "--outdir_path", required=False, type=str,
                                      help="""If specified the directory containing the Newick and the corresponding 
