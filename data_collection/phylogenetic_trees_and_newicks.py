@@ -138,7 +138,6 @@ def randomize_distances_func(newick_string, max_distance):
 def taxids_from_newick(newick_string):
     """
     Given a newick tree containing taxon IDs return a list of all taxon IDs inside the string using regex.
-    CAUTION: This regex only works with newicks with distances of 1 so before distances are added.
 
     Args:
         newick_string (str): The tree in newick format
@@ -169,6 +168,7 @@ class TreeRender:
         right_to_left_orientation = False, # if False then default orientation left to right is applied
         dont_allow_multifurcations = True,
         branch_vertical_margin = 10, # number of pixels between adjacent branches
+        hierarchy_only = False # equivalent to removing distances in newick + dont_display_lengths = True
         ):
         # Attributes
         self.newick = newick
@@ -185,6 +185,7 @@ class TreeRender:
         self.branch_vertical_margin = branch_vertical_margin
         self.fontsize = fontsize
         self.linewidth = linewidth
+        self.hierarchy_only = hierarchy_only 
     
     def is_multifurcating(self):
         """
@@ -260,7 +261,7 @@ class TreeRender:
         mpl.rcParams['font.size'] = self.fontsize # reasonable range: [8,30]
         newick_tree.rooted = True
         plt.axis("off")
-        if self.dont_display_lengths:
+        if self.dont_display_lengths or self.hierarchy_only:
             Phylo.draw(newick_tree, axes=axes, do_show=False, branch_labels=lambda c: None)
         else: 
             Phylo.draw(newick_tree, axes=axes, do_show=False, branch_labels=lambda c: c.branch_length)
@@ -312,12 +313,13 @@ class TreeRender:
                 taxa_face = faces.AttrFace("name", fsize=fontsize)
                 # apply face to the current leaf
                 faces.add_face_to_node(taxa_face, node, column=0)
-            # if dont_display_lengths == True, then dont create faces for distances
-            if not self.dont_display_lengths and not node.is_root():
-                # create face for the distance 
-                dist_face = faces.AttrFace(f"dist", fsize=fontsize)
-                # apply face to the current node
-                faces.add_face_to_node(dist_face, node, column=0, position="branch-top")
+            # if dont_display_lengths or hierarchy_only are True, then dont create faces for distances
+            if not (self.dont_display_lengths or self.hierarchy_only):
+                if not node.is_root():
+                    # create face for the distance 
+                    dist_face = faces.AttrFace(f"dist", fsize=fontsize)
+                    # apply face to the current node
+                    faces.add_face_to_node(dist_face, node, column=0, position="branch-top")
         # set the layout
         treestyle.layout_fn = layout
         # TODO: would it be smart to test if the AI is able to give leaves trivial names from top to bottom if the given 
@@ -327,7 +329,7 @@ class TreeRender:
         # treestyle.scale = 100 # 100 pixels per branch length unit
         # set default margin is 10 pixels
         if self.branch_vertical_margin:
-            if self.branch_vertical_margin < 10:
+            if self.branch_vertical_margin < 5:
                 treestyle.branch_vertical_margin = 10
                 print(f"[{time}] Warning in save_newick_image_ete3: branch_vertical_margin should not deceed 10 pixels. \
                     Defaulting to 10 pixels.")
@@ -364,12 +366,12 @@ class TreeRender:
         """
         tsv_header = "random_distances\tmax_distance\tamount_taxa\tpackage\tbranch_lengths\tcircular_tree\t"
         tsv_header += "right_to_left_orientation\tmultifurcations\tbranch_vertical_margin[px]\t"
-        tsv_header += "fontsize\tlinewidth[px]"
+        tsv_header += "fontsize\tlinewidth[px]\thierarchy_only\t"
         tsv_header += "\n"
         params = f"{self.randomize_distances}\t{self.max_distance}\t{self.amount_taxa}\t"
         params += f"{self.package}\t{self.dont_display_lengths}\t{self.circular_tree}\t"
         params += f"{self.right_to_left_orientation}\t{not self.dont_allow_multifurcations}\t"
-        params += f"{self.branch_vertical_margin}\t{self.fontsize}\t{self.linewidth}\t" 
+        params += f"{self.branch_vertical_margin}\t{self.fontsize}\t{self.linewidth}\t{self.hierarchy_only}\t" 
         with open(outfile_path, "w") as tsv_file:
             tsv_file.write(tsv_header)
             tsv_file.write(params)       
@@ -395,6 +397,9 @@ class TreeRender:
             print(f"[{time}] create_output_directory: Image is saved to generated_data directory in working directory.")
         # save the image
         self.save_newick_image(image_path)
+        # update the newick before writing it to file if --hierarchy_only was specified
+        if self.hierarchy_only:
+            self.remove_distances_from_newick()
         # save the .nwk
         with open(newick_path, "w") as nwk_file:
             nwk_file.write(self.newick)
@@ -432,10 +437,12 @@ class TreeRender:
             self.max_distance = random.randint(1, 10)
         return self
     
-    def remove_distances(self):
+    def remove_distances_from_newick(self):
         """
-        Function for creating hierarchy-only tree renders. Removes distances 
+        Function for creating hierarchy-only tree renders. Removes distances from the treerenders newick using regex. 
         """
+        self.newick = re.sub(r":\d+(\.\d+){0,1}", "", self.newick)
+        
 def ask_user_to_continue():
     while True:
         print("Yes[y]/No[n]?")
@@ -533,6 +540,7 @@ def main():
         create_rand_dataset = args.create_rand_dataset
         fontsize = args.fontsize
         linewidth = args.linewidth
+        hierarchy_only = args.hierarchy_only
         # set the default values of fontsize and linewidth
         if not fontsize:
             if package == "ete3":
@@ -599,7 +607,8 @@ def main():
                 dont_allow_multifurcations=dont_allow_multifurcations,
                 branch_vertical_margin=branch_vertical_margin,
                 fontsize=fontsize,
-                linewidth=linewidth
+                linewidth=linewidth,
+                hierarchy_only=hierarchy_only,
             )
             # if the user wants to generate a dataset with randomized parameters
             if create_rand_dataset:
@@ -626,6 +635,7 @@ def main():
             print("Parameters:")
             print(f"  Fontsize: {tree_render.fontsize}")
             print(f"  Linewidth: {tree_render.linewidth}")
+            print(f"  Hierarchy only: {tree_render.hierarchy_only}")
             print(f"  Randomize distances: {tree_render.randomize_distances}")
             print(f"  {f"Max distance: {tree_render.max_distance}" if tree_render.randomize_distances \
                 else "Distances: all exactly 1"}")
