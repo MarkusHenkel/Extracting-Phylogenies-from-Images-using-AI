@@ -11,22 +11,37 @@ import matplotlib.pyplot as plt
 import re
 import os
 import pathlib
+
 # ncbi taxonomy
 ncbi = NCBITaxa()
+
 # time for logs
 time = datetime.datetime.now().strftime("%Y-%b-%d %H:%M:%S")
-# Check if a given taxid is valid 
-def is_valid(taxid):
-    return True if ncbi.get_taxid_translator([taxid]) else False 
-    
+
+def is_taxid_valid(taxid):
+    """
+    Check if a given taxon ID is valid (present in the NCBI taxonomy and not a digit string) 
+
+    Args:
+        taxid (int): taxon ID from the NCBI taxonomy
+
+    Returns:
+        bool: True if taxon ID can be found in the NCBI taxonomy
+    """
+    print(f"is_taxid_valid: taxid: {taxid}")
+    if ncbi.get_taxid_translator([taxid]) and not ncbi.get_taxid_translator([taxid])[taxid].isdigit():
+        print(f"is_taxid_valid: ncbi: {ncbi.get_taxid_translator([taxid])}")
+        return True
+    else:
+        return False
 # Counts amount of invalid taxids in the first 10000
 # Function for testing
-def amount_invalid():
-    counter = 0
-    for taxid in range(10000):
-        if not is_valid(taxid):
-            counter += 1
-    return counter
+# def amount_invalid():
+#     counter = 0
+#     for taxid in range(10000):
+#         if not is_taxid_valid(taxid):
+#             counter += 1
+#     return counter
 
 def is_newick(newick, format=None):
     """
@@ -34,7 +49,7 @@ def is_newick(newick, format=None):
 
     Args:
         newick (str): Newick string
-        format (int): format of the newick according to the ETE3 toolki
+        format (int): format of the newick according to the ETE3 toolkit
 
     Returns:
         bool: True only if the formatting is valid
@@ -47,44 +62,6 @@ def is_newick(newick, format=None):
     except:
         return False
     return True
-
-def generate_random_taxids(amount = 10, randomize = False):
-    """
-    Given a number of taxa (amount as int) and a boolean generates 
-    either a list with fixed or randomized amount [2, amount] of random valid taxa.
-
-    Args:
-        amount (int, optional): Amount of taxon IDs created (upper limit if amount is randomized). Defaults to 10.
-        randomize (bool, optional): Randomizes the amount of taxon IDs created. Defaults to False.
-
-    Returns:
-        list(str): List of valid random taxon IDs 
-    """
-    valid_rand_taxids = []
-    # if randomize = True, randomize the amount of taxa (0-amount)
-    if randomize:
-        amount = random.randint(amount)
-    # in any case let the minimum amount of taxa be 2
-    if (amount <= 1):
-        amount = 2
-    # Add a valid taxid <amount> times
-    i = 0
-    while i < amount:
-        rand_taxid = random.randint(1,10000)
-        if is_valid(rand_taxid):
-            valid_rand_taxids.append(rand_taxid)
-            i += 1
-    return valid_rand_taxids
-
-# Given a list of random valid taxids returns a list of the corresponding taxa names 
-# 
-# output of get_taxid_translator is a dictionary where the keys are the taxon IDs and the values the taxa
-def taxids_to_taxa(valid_rand_taxids):  
-    valid_rand_taxa_dict = ncbi.get_taxid_translator(valid_rand_taxids)
-    valid_rand_taxa = []
-    for taxon in valid_rand_taxa_dict.values():
-        valid_rand_taxa.append(taxon)
-    return valid_rand_taxa
 
 def remove_support_vals(newick):
     """
@@ -99,27 +76,77 @@ def remove_support_vals(newick):
     """
     return re.sub(r"(?<=\))\d", "", newick)
 
-# Given a list of random valid taxa generates its topology and returns its newick tree as a string
-def generate_newick_tree(valid_rand_taxa):
-    newick = ncbi.get_topology(valid_rand_taxa).write()
-    return  remove_support_vals(newick)
-
-def translate_newick_tree(newick_string):
-    """
-    Given a newick tree with taxids returns the newick tree with the corresponding taxa
+def remove_special_chars(taxon):
+    r"""
+    Deletes special characters that cause issues with the newick format or the packages from a given newick.
+    Warning: Remove special characters after getting the topology otherwise the taxon might not be found in the 
+    NCBI taxonomy 
 
     Args:
-        newick_string (str): The tree in newick format
+        taxon (str): taxon that may contain special character 
 
     Returns:
-        newick_string (str): The same tree but taxon IDs are replaced with the corresponding taxa
+        str: taxon without special characters [](),.;:'"\
     """
-    taxids = taxids_from_newick(newick_string)
-    taxa = taxids_to_taxa(taxids)
-    for i in range(len(taxids)):
-        newick_string = newick_string.replace(taxids[i], taxa[i].replace(" ","_"))
-    return newick_string
+    return re.sub(r"[\[\]\,\.\;\:\'\"\\\(\)]", "", taxon) 
 
+# Debug
+test = "(test1)_[test2]_\"ahaha\"_\'ahaha;:.,\'"
+print(remove_special_chars(test))
+
+def generate_newick(amount_taxa=10):
+    """
+    Generates a newick tree with randomized taxa and the specified amount of taxa using the NCBI taxonomy.
+    The topology of the newick corresponds to that of the minimal pruned NCBI taxonomy tree i.e. a taxonomic tree 
+    based on hierarchical classification.  
+
+    Args:
+        amount_taxa (int): amount of taxa in the output newick
+
+    Returns:
+        str: newick string with taxa and without NCBIs support values and without taxa containing special characters
+    """
+    valid_taxids = []
+    valid_taxa = []
+    # in any case let the minimum amount of taxa be 2
+    if (amount_taxa <= 1):
+        amount_taxa = 2
+    # Add a valid taxid <amount> times
+    i = 0
+    while i < amount_taxa:
+        # not every taxid in the range 1 to 10000 is valid, we have to manually check each time a taxid is randomized
+        taxid = random.randint(1,10000)
+        # if the taxid is valid and not already in the taxid list save taxid and the corresponding taxon
+        if is_taxid_valid(taxid) and not taxid in valid_taxids:
+            print(f"taxid {i}: {taxid}")
+            valid_taxids.append(taxid)
+            taxon = ncbi.get_taxid_translator([taxid])[taxid]
+            print(f"taxon {i}: {taxon}")
+            valid_taxa.append(taxon)
+            i += 1
+    # get the topology of the taxids
+    newick_taxids = ncbi.get_topology(valid_taxids).write()
+    print("with support"+newick_taxids)
+    # remove support values that get_topology adds
+    newick = remove_support_vals(newick_taxids) 
+    print("amount taxa "+ str(amount_taxa))
+    print("amount taxids "+ str(len(valid_taxids)))
+    print("amount taxa "+ str(len(valid_taxa)))
+    print("taxids:" + str(valid_taxids))
+    print("taxids:" + str(valid_taxa))
+    print("without support"+newick)
+    # special characters that are removed because they could interfere with newick parsing or packages 
+    for i in range(len(valid_taxids)):
+        # translate taxids to their corresponding taxa, replace spaces with _ for newick parsing reasons
+        # newick = newick.replace(str(valid_taxids[i]), valid_taxa[i].replace(" ", "_"))
+        newick = re.sub(fr"(?<!\d){valid_taxids[i]}(?!\d)", valid_taxa[i].replace(" ", "_"))
+        print(newick) 
+        # remove special chars 
+        newick = newick.replace(valid_taxa[i], remove_special_chars(valid_taxa[i]))
+    print(newick)
+    return newick
+# generate_newick()
+# exit()
 def randomize_distances_func(newick_string, max_distance):
     """
     Given a newick tree and a max distance returns the newick tree with randomized distances. 
@@ -614,20 +641,13 @@ def main():
             if create_rand_dataset:
                 tree_render.randomize_treerender()
             ########## CREATE THE NEWICK ##########
-            if tree_render.amount_taxa:
-                random_taxids = generate_random_taxids(amount=tree_render.amount_taxa)
-                newick_with_taxids = generate_newick_tree(random_taxids)
-                newick_with_taxa = translate_newick_tree(newick_with_taxids)
-            else:
-                # let the amount of taxa default to 10 if amount_taxa wasnt specified
-                random_taxids = generate_random_taxids()
-                newick_with_taxids = generate_newick_tree(random_taxids)
-                newick_with_taxa = translate_newick_tree(newick_with_taxids)
+            # TODO: fix double _ issue
+            newick = generate_newick(tree_render.amount_taxa)
             # randomize the distances if a max distance is specified
             if tree_render.randomize_distances:
-                newick_with_taxa = randomize_distances_func(newick_with_taxa, tree_render.max_distance)
+                newick = randomize_distances_func(newick, tree_render.max_distance)
             # set the finished newick as the treerenders newick
-            tree_render.newick = newick_with_taxa
+            tree_render.newick = newick
             # save directory to outfile path if it was specified
             # If not create the generated data directory with the data directory inside
             tree_render.create_output_directory()
