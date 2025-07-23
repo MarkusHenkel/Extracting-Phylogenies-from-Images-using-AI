@@ -16,8 +16,9 @@ import pathlib
 ncbi = NCBITaxa()
 # ncbi.update_taxonomy_database()
 
-# time for logs
-time = datetime.datetime.now().strftime("%Y-%b-%d %H:%M:%S")
+# get current time for logs
+def get_time():
+    return datetime.datetime.now().strftime("%Y-%b-%d %H:%M:%S")
 
 def is_taxid_valid(taxid):
     """
@@ -232,7 +233,7 @@ class TreeRender:
         the image will be a .jpg.
         """
         if not self.package in ["phylo", "ete3"]:
-            exit(f"[{time}] save_newick_image: Package {self.package} not valid.")
+            exit(f"[{get_time()}] save_newick_image: Package {self.package} not valid.")
         elif self.package == "phylo":
             self.save_newick_image_phylo(outfile_path)
         elif self.package == "ete3":
@@ -247,7 +248,7 @@ class TreeRender:
         """
         # check if the newick has correct formatting
         if not is_newick(self.newick):
-            print(f"[{time}] Error in save_newick_image(): Newick string doesn't have valid formatting.")
+            print(f"[{get_time()}] Error in save_newick_image(): Newick string doesn't have valid formatting.")
         # make the the newick tree (string) into a file so that it can be drawn by bio.phylo 
         newick_tree = Phylo.read(StringIO(self.newick), "newick")
         # create a matplotlib figure 
@@ -268,10 +269,10 @@ class TreeRender:
             if not os.path.exists(os.path.dirname(outfile_path)):
                 os.makedirs(os.path.dirname(outfile_path), exist_ok=True)
                 plt.savefig(outfile_path, bbox_inches='tight') 
-                print(f"[{time}] save_newick_image_phylo: Image was saved to newly created directory.")
+                print(f"[{get_time()}] save_newick_image_phylo: Image was saved to newly created directory.")
             else: 
                 plt.savefig(outfile_path, bbox_inches='tight')
-                print(f"[{time}] save_newick_image_phylo: Image was saved to specified directory.")
+                print(f"[{get_time()}] save_newick_image_phylo: Image was saved to specified directory.")
         else:
             plt.savefig(f"phylo_tree_{self.file_id}.jpg", bbox_inches='tight')
         plt.close()
@@ -284,7 +285,7 @@ class TreeRender:
             outfile_path (str): path where the image is saved at
         """
         if not is_newick(self.newick):
-            exit(f"[{time}] Error in save_newick_image_ete3: Given newick isn't valid.")
+            exit(f"[{get_time()}] Error in save_newick_image_ete3: Given newick isn't valid.")
         # create ete3 Tree object 
         newick_tree = Tree(self.newick)
         # create treestyle object to adjust tree properties of Tree object
@@ -294,7 +295,7 @@ class TreeRender:
         # solve multifurcations if they aren't allowed and update the newick if there is a multifurcation
         if self.dont_allow_multifurcations == True and self.is_multifurcating():
             self.solve_multifurcations()
-            print(f"[{time}] Solved multifurcation(s).")
+            print(f"[{get_time()}] Solved multifurcation(s).")
         # adjust line width
         nodestyle["vt_line_width"] = self.linewidth # reasonable range: [1,10]
         nodestyle["hz_line_width"] = self.linewidth # reasonable range: [1,10]
@@ -328,7 +329,7 @@ class TreeRender:
         if self.branch_vertical_margin:
             if self.branch_vertical_margin < 5:
                 treestyle.branch_vertical_margin = 10
-                print(f"[{time}] Warning in save_newick_image_ete3: branch_vertical_margin should not deceed 10 pixels. \
+                print(f"[{get_time()}] Warning in save_newick_image_ete3: branch_vertical_margin should not deceed 10 pixels. \
                     Defaulting to 10 pixels.")
             else:
                 treestyle.branch_vertical_margin = self.branch_vertical_margin  
@@ -381,17 +382,17 @@ class TreeRender:
         if self.outdir_path:
             if not os.path.exists(self.outdir_path):
                 os.makedirs(self.outdir_path)
-                print(f"[{time}] create_output_directory: Specified directory was created")
+                print(f"[{get_time()}] create_output_directory: Specified directory was created")
             image_path = self.outdir_path + f"\\data{self.file_id}\\tree{self.file_id}.jpg"
             newick_path = self.outdir_path + f"\\data{self.file_id}\\newick{self.file_id}.nwk"
             tsv_path = self.outdir_path + f"\\data{self.file_id}\\params{self.file_id}.tsv"
-            print(f"[{time}] create_output_directory: Image is saved to specified directory.")
+            print(f"[{get_time()}] create_output_directory: Image is saved to specified directory.")
         else:
             path = str(pathlib.Path(__file__).parent.resolve()) + f"\\data{self.file_id}\\"
             image_path = path + f"tree{self.file_id}.jpg"
             newick_path = path + f"newick{self.file_id}.nwk"
             tsv_path = path + f"params{self.file_id}.tsv"
-            print(f"[{time}] create_output_directory: Image is saved to generated_data directory in working directory.")
+            print(f"[{get_time()}] create_output_directory: Image is saved to generated_data directory in working directory.")
         # save the image
         self.save_newick_image(image_path)
         # update the newick before writing it to file if --hierarchy_only was specified
@@ -400,10 +401,10 @@ class TreeRender:
         # save the .nwk
         with open(newick_path, "w") as nwk_file:
             nwk_file.write(self.newick)
-        print(f"[{time}] create_output_directory: Newick string was saved into .nwk.")
+        print(f"[{get_time()}] create_output_directory: Newick string was saved into .nwk.")
         # save the tsv
         self.write_params_to_tsv(tsv_path)
-        print(f"[{time}] create_output_directory: Used parameters were saved into .tsv.")
+        print(f"[{get_time()}] create_output_directory: Used parameters were saved into .tsv.")
         
     # TODO: implement create_rand_treerender()
     def randomize_treerender(self):
@@ -561,7 +562,7 @@ def main():
             right_to_left_orientation
         ):
             # warn user which parameters cant be applied and reset them to default values
-            print(f"[{time}] Warning: You are using parameters that are ete3 only: ")
+            print(f"[{get_time()}] Warning: You are using parameters that are ete3 only: ")
             if branch_vertical_margin:
                 print("branch_vertical")
                 branch_vertical_margin = None
@@ -574,13 +575,13 @@ def main():
             if right_to_left_orientation:
                 print("right_to_left_orientation") 
                 right_to_left_orientation = False
-            print(f"[{time}] Resetting ete3 parameters. Do you want to proceed?")
+            print(f"[{get_time()}] Resetting ete3 parameters. Do you want to proceed?")
             ask_user_to_continue()
         if number_directories < 1:
-            exit(f"[{time}] --number_directories {number_directories} not valid. Has to be positive integer > 1.")
+            exit(f"[{get_time()}] --number_directories {number_directories} not valid. Has to be positive integer > 1.")
         # warn user if he wants to create more than one image
         if number_directories > 1:
-            print(f"[{time}] Warning: You are about to create {number_directories} directories. Are you sure you want to proceed?")
+            print(f"[{get_time()}] Warning: You are about to create {number_directories} directories. Are you sure you want to proceed?")
             ask_user_to_continue()
         ########## MAIN LOOP ##########
         print("Data generation for extracting phylogenies from images using AI.")
