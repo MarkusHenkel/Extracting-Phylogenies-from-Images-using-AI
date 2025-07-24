@@ -11,6 +11,9 @@ import matplotlib.pyplot as plt
 import re
 import os
 import pathlib
+from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar # size bar phylo
+import matplotlib.font_manager as fm # size bar phylo
+from matplotlib.transforms import Bbox # size bar phylo
 
 # ncbi taxonomy
 ncbi = NCBITaxa()
@@ -20,7 +23,7 @@ ncbi = NCBITaxa()
 def get_time():
     return datetime.datetime.now().strftime("%Y-%b-%d %H:%M:%S")
 
-def is_taxid_valid(taxid):
+def is_taxid_valid(taxid, max_length=35):
     """
     Check if a given taxon ID is valid (present in the NCBI taxonomy and not a digit string) 
 
@@ -31,6 +34,9 @@ def is_taxid_valid(taxid):
         bool: True if taxon ID can be found in the NCBI taxonomy
     """
     if ncbi.get_taxid_translator([taxid]) and not ncbi.get_taxid_translator([taxid])[taxid].isdigit():
+        # dont allow absurdly long taxa that could malform the image
+        if len(ncbi.get_taxid_translator([taxid])[taxid]) > max_length:
+            return False
         return True
     else:
         return False
@@ -242,14 +248,28 @@ class TreeRender:
         newick_tree = Phylo.read(StringIO(self.newick), "newick")
         # create a matplotlib figure 
         fig = plt.figure(figsize=(30, 20), dpi=150)
+        fontprops = fm.FontProperties(size=self.fontsize)
         axes = fig.add_subplot(1, 1, 1)
+        # add scalebar to plot manually (bio.phylo does not provide it)
+        scalebar = AnchoredSizeBar(
+            axes.transData,
+            1, '1.0', 'lower left', 
+            pad=2,
+            color='black',
+            frameon=False,
+            # size_vertical=1,
+            fontproperties=fontprops,
+            # bbox_to_anchor=Bbox.from_bounds(0,0,1,1),
+            bbox_to_anchor=(0.15, 0),
+            bbox_transform=axes.figure.transFigure
+        )
+        axes.add_artist(scalebar)
         # set line width and fontsize
-        mpl.rcParams['lines.linewidth'] = self.linewidth # reasonable range: [1,10]
-        mpl.rcParams['font.size'] = self.fontsize # reasonable range: [8,30]
+        mpl.rcParams['lines.linewidth'] = self.linewidth # reasonable range: [1,10] (if no branch lengths)
+        mpl.rcParams['font.size'] = self.fontsize # reasonable range: [8,16]
         newick_tree.rooted = True
         plt.axis("off")
-        # TODO: if topology_only remove node labels for taxa
-        
+        # TODO: if topology_only remove node labels for taxa, BETTER: remove taxa from newick
         if self.dont_display_lengths or self.taxa_only or self.topology_only:
             Phylo.draw(newick_tree, axes=axes, do_show=False, branch_labels=lambda c: None)
         else: 
@@ -414,18 +434,16 @@ class TreeRender:
         fontsize, linewidth
         This way a user that does not want to understand all parameters can create a simple but 
         diverse dataset quickly.
-
-        Returns:
-            TreeRender: TreeRender object with user parameters randomized 
         """
         self.package = random.choice(["ete3","phylo"])
         if self.package == "ete3":
             self.dont_allow_multifurcations = random.choice([True,False])
             self.branch_vertical_margin = random.randint(10, 100)
-            self.fontsize = random.randint(8,50)
+            self.fontsize = random.randint(8,20)
             self.linewidth = random.randint(1,20)
         if self.package == "phylo":
-            self.fontsize = random.randint(8,50)
+            self.fontsize = random.randint(8,20)
+            self.linewidth = 1
             # TODO: until no solution for increasing the branch length offset is found the linewidth cant be increased
             # for phylo because it omits the branch lengths
             self.linewidth = 1
@@ -534,7 +552,9 @@ def main():
                                      help="""Choose the size of the font. Also applies to branch lengths if applicable. 
                                      Default: 8 (ETE3), 16 (Bio.Phylo)""")
         argument_parser.add_argument("-l", "--linewidth", type=int, required=False, 
-                                     help="Choose the width of branches in pixels. Default: 1 (ETE3), 2 (Bio.Phylo)")
+                                     help="""Choose the width of branches in pixels. Default: 1. Should not exceed 1 if
+                                     used with package phylo unless branch lengths are not displayed or they are 
+                                     allowed to not be legible well.""")
         argument_parser.add_argument("-p", "--package", required=False, choices=["phylo", "ete3"], default="ete3",
                                      help="""Specify which package is used in the creation of the image. 
                                      Choose between Bio.Phylo and ETE3 Toolkit. Default: ete3.""")
@@ -591,10 +611,14 @@ def main():
             if package == "ete3":
                 linewidth = 1
             elif package == "phylo":
-                linewidth = 2
+                linewidth = 1
         ########## CHECKS ##########
-        # TODO: remove unnecessary parameters from treerenders if top or taxa_only is specified
-        # TODO: warn user if he uses params compatible with top or taxa only => font, linewidth, branch lengths etc
+        # TODO: remove unnecessary parameters from treerenders if topo or taxa_only is specified (not fontsize !!!)
+        # TODO: warn user if he uses params compatible with topo or taxa only => font, linewidth, branch lengths etc
+        # TODO: show default vertical margin for ete3 
+        # TODO: maybe remove commas from topo only newicks because they are superfluous?
+        # TODO: maybe avoid distances smaller than 1 to avoid distances written on top of edges?
+        # TODO: implement max_taxa_length argument, is_taxid_valid 
         # negative or zero linewidth is set to 1
         if package == "ete3" and linewidth <= 0:
             linewidth = 1
