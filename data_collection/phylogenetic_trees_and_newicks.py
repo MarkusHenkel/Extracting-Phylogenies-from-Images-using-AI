@@ -269,7 +269,8 @@ class TreeRender:
         mpl.rcParams['font.size'] = self.fontsize # reasonable range: [8,16]
         newick_tree.rooted = True
         plt.axis("off")
-        # TODO: if topology_only remove node labels for taxa, BETTER: remove taxa from newick
+        # remove taxa from newick if topology_only
+        self.remove_taxa_from_newick()
         if self.dont_display_lengths or self.taxa_only or self.topology_only:
             Phylo.draw(newick_tree, axes=axes, do_show=False, branch_labels=lambda c: None)
         else: 
@@ -408,12 +409,14 @@ class TreeRender:
             newick_path = path + f"newick{self.file_id}.nwk"
             tsv_path = path + f"params{self.file_id}.tsv"
             print(f"[{get_time()}] create_output_directory: Image is saved to generated_data directory in working directory.")
+        # remove taxa before removing distances and saving the image 
+        if self.package == "phylo" and self.topology_only:
+            self.remove_taxa_from_newick()
         # save the image
         self.save_newick_image(image_path)
-        # update the newick before writing it to file if --taxa_only or --topology_only was specified
-        # remove taxa from topology_only trees before removing distances (see remove_taxa... implementation)
-        # TODO: taxa are still present in the output newick
-        if self.topology_only:
+        # remove taxa from topology_only trees before removing distances but after saving img because ete3 doesnt allow
+        # empty leaf nodes
+        if self.package == "ete3" and self.topology_only:
             self.remove_taxa_from_newick()
         # remove distances from taxa and topology_only trees
         if self.taxa_only or self.topology_only:
@@ -479,12 +482,8 @@ class TreeRender:
         Removes taxa from the treerenders newick using regex. 
         Caution: The regex expects there to still be distances (":") in the newick.
         """
-        print("newick before removal of taxa: ")
-        print(self.newick)
         self.newick = re.sub(r"(?<=[,(])[\d\w\.]+(?=\:)", "", self.newick)
-        print("newick after removal of taxa: ")
-        print(self.newick)
-        
+    
 def ask_user_to_continue():
     while True:
         print("Yes[y]/No[n]?")
@@ -619,6 +618,7 @@ def main():
         # TODO: maybe remove commas from topo only newicks because they are superfluous?
         # TODO: maybe avoid distances smaller than 1 to avoid distances written on top of edges?
         # TODO: implement max_taxa_length argument, is_taxid_valid 
+        # TODO: remove node faces from inner nodes and leafs in ete3?
         # negative or zero linewidth is set to 1
         if package == "ete3" and linewidth <= 0:
             linewidth = 1
@@ -681,15 +681,10 @@ def main():
             if create_rand_dataset:
                 tree_render.randomize_treerender()
             ########## CREATE THE NEWICK ##########
-            newick = generate_newick(tree_render.amount_taxa)
-            # set the finished newick as the treerenders newick
-            tree_render.newick = newick
-            # randomize the distances if a max distance is specified
+            tree_render.newick = generate_newick(tree_render.amount_taxa)
+            # randomize the distances if a randomize_distances is specified
             if tree_render.randomize_distances:
                 tree_render.randomize_distances_func()
-            # remove taxa if topology_only is specified TODO: move this into the save_image functions
-            # if tree_render.topology_only:
-            #     tree_render.remove_taxa_from_newick()
             # save directory to outfile path if it was specified
             # If not create the generated data directory with the data directory inside
             tree_render.create_output_directory()
