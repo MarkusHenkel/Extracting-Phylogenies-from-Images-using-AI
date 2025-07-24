@@ -118,21 +118,8 @@ def generate_newick(amount_taxa=10):
         newick = re.sub(fr"(?<!\d){taxid}(?!\d)", remove_special_chars(taxon).replace(" ", "_"), newick) 
     return newick
 
-def randomize_distances_func(newick_string, max_distance):
-    """
-    Given a newick tree and a max distance returns the newick tree with randomized distances. 
-    Randomized distances are rounded to 2 decimal and are in the range from 0.00 to the specified max amount.
 
-    Args:
-        newick_string (str): The tree in newick format
-        max_distance (float): upper limit of randomized distances
-    """
-    newick_string = re.sub(
-        r"(?<=:)\d+",
-        lambda _: str(round(random.uniform(0.00, max_distance), 2)),
-        newick_string)
-    return newick_string
-
+# TODO: superfluous, remove
 def taxids_from_newick(newick_string):
     """
     Given a newick tree containing taxon IDs return a list of all taxon IDs inside the string using regex.
@@ -166,7 +153,8 @@ class TreeRender:
         right_to_left_orientation = False, # if False then default orientation left to right is applied
         dont_allow_multifurcations = True,
         branch_vertical_margin = 10, # number of pixels between adjacent branches
-        hierarchy_only = False # equivalent to removing distances in newick + dont_display_lengths = True
+        taxa_only = False, # equivalent to removing distances in newick + dont_display_lengths = True
+        topology_only = False,
         ):
         # Attributes
         self.newick = newick
@@ -183,7 +171,8 @@ class TreeRender:
         self.branch_vertical_margin = branch_vertical_margin
         self.fontsize = fontsize
         self.linewidth = linewidth
-        self.hierarchy_only = hierarchy_only 
+        self.taxa_only = taxa_only
+        self.topology_only = topology_only
     
     def is_multifurcating(self):
         """
@@ -246,10 +235,10 @@ class TreeRender:
         Args:
             outfile_path (str): path where the image is saved at 
         """
-        # check if the newick has correct formatting
-        if not is_newick(self.newick):
-            print(f"[{get_time()}] Error in save_newick_image(): Newick string doesn't have valid formatting.")
-        # make the the newick tree (string) into a file so that it can be drawn by bio.phylo 
+        # check if the newick has correct formatting TODO: adjust is_newick for taxa and top only args
+        # if not is_newick(self.newick):
+        #     exit(f"[{get_time()}] Error in save_newick_image(): Newick string doesn't have valid formatting.")
+        # make the the newick into a file so that it can be drawn by bio.phylo 
         newick_tree = Phylo.read(StringIO(self.newick), "newick")
         # create a matplotlib figure 
         fig = plt.figure(figsize=(30, 20), dpi=150)
@@ -259,7 +248,9 @@ class TreeRender:
         mpl.rcParams['font.size'] = self.fontsize # reasonable range: [8,30]
         newick_tree.rooted = True
         plt.axis("off")
-        if self.dont_display_lengths or self.hierarchy_only:
+        # TODO: if topology_only remove node labels for taxa
+        
+        if self.dont_display_lengths or self.taxa_only or self.topology_only:
             Phylo.draw(newick_tree, axes=axes, do_show=False, branch_labels=lambda c: None)
         else: 
             Phylo.draw(newick_tree, axes=axes, do_show=False, branch_labels=lambda c: c.branch_length)
@@ -284,8 +275,9 @@ class TreeRender:
         Args:
             outfile_path (str): path where the image is saved at
         """
-        if not is_newick(self.newick):
-            exit(f"[{get_time()}] Error in save_newick_image_ete3: Given newick isn't valid.")
+        # check if the newick has correct formatting TODO: adjust is_newick for taxa and top only args
+        # if not is_newick(self.newick):
+        #     exit(f"[{get_time()}] Error in save_newick_image_ete3: Given newick isn't valid.")
         # create ete3 Tree object 
         newick_tree = Tree(self.newick)
         # create treestyle object to adjust tree properties of Tree object
@@ -306,13 +298,15 @@ class TreeRender:
         fontsize = self.fontsize # reasonable range: [8,30]
         # create layout for adjusting the fontsize of taxa and distances
         def layout(node):
-            if node.is_leaf():
-                # create face for taxon with chosen fontsize
-                taxa_face = faces.AttrFace("name", fsize=fontsize)
-                # apply face to the current leaf
-                faces.add_face_to_node(taxa_face, node, column=0)
-            # if dont_display_lengths or hierarchy_only are True, then dont create faces for distances
-            if not (self.dont_display_lengths or self.hierarchy_only):
+            # dont put leaf labels if topology_only is True
+            if not self.topology_only:
+                if node.is_leaf():
+                    # create face for taxon with chosen fontsize
+                    taxa_face = faces.AttrFace("name", fsize=fontsize)
+                    # apply face to the current leaf
+                    faces.add_face_to_node(taxa_face, node, column=0)
+            # if dont_display_lengths, taxa_only or topology_only are True, then dont create faces for distances
+            if not (self.dont_display_lengths or self.taxa_only or self.topology_only):
                 if not node.is_root():
                     # create face for the distance 
                     dist_face = faces.AttrFace(f"dist", fsize=fontsize)
@@ -364,12 +358,13 @@ class TreeRender:
         """
         tsv_header = "random_distances\tmax_distance\tamount_taxa\tpackage\tbranch_lengths\tcircular_tree\t"
         tsv_header += "right_to_left_orientation\tmultifurcations\tbranch_vertical_margin[px]\t"
-        tsv_header += "fontsize\tlinewidth[px]\thierarchy_only\t"
+        tsv_header += "fontsize\tlinewidth[px]\ttaxa_only\ttopology_only\t"
         tsv_header += "\n"
         params = f"{self.randomize_distances}\t{self.max_distance}\t{self.amount_taxa}\t"
         params += f"{self.package}\t{self.dont_display_lengths}\t{self.circular_tree}\t"
         params += f"{self.right_to_left_orientation}\t{not self.dont_allow_multifurcations}\t"
-        params += f"{self.branch_vertical_margin}\t{self.fontsize}\t{self.linewidth}\t{self.hierarchy_only}\t" 
+        params += f"{self.branch_vertical_margin}\t{self.fontsize}\t{self.linewidth}\t{self.taxa_only}\t"
+        params += f"{self.topology_only}\t" 
         with open(outfile_path, "w") as tsv_file:
             tsv_file.write(tsv_header)
             tsv_file.write(params)       
@@ -395,8 +390,13 @@ class TreeRender:
             print(f"[{get_time()}] create_output_directory: Image is saved to generated_data directory in working directory.")
         # save the image
         self.save_newick_image(image_path)
-        # update the newick before writing it to file if --hierarchy_only was specified
-        if self.hierarchy_only:
+        # update the newick before writing it to file if --taxa_only or --topology_only was specified
+        # remove taxa from topology_only trees before removing distances (see remove_taxa... implementation)
+        # TODO: taxa are still present in the output newick
+        if self.topology_only:
+            self.remove_taxa_from_newick()
+        # remove distances from taxa and topology_only trees
+        if self.taxa_only or self.topology_only:
             self.remove_distances_from_newick()
         # save the .nwk
         with open(newick_path, "w") as nwk_file:
@@ -435,11 +435,37 @@ class TreeRender:
             self.max_distance = random.randint(1, 10)
         return self
     
+    def randomize_distances_func(self):
+        """
+        Given a newick tree and a max distance returns the newick tree with randomized distances. 
+        Randomized distances are rounded to 2 decimal and are in the range from 0.00 to the specified max amount.
+
+        Args:
+            newick_string (str): The tree in newick format
+            max_distance (float): upper limit of randomized distances
+        """
+        self.newick = re.sub(
+            r"(?<=:)\d+",
+            lambda _: str(round(random.uniform(0.00, self.max_distance), 2)),
+            self.newick)
+        
     def remove_distances_from_newick(self):
         """
-        Function for creating hierarchy-only tree renders. Removes distances from the treerenders newick using regex. 
+        Removes distances from the treerenders newick using regex.
+        Regex expects them to be right after a ":". 
         """
         self.newick = re.sub(r":\d+(\.\d+){0,1}", "", self.newick)
+    
+    def remove_taxa_from_newick(self):
+        """
+        Removes taxa from the treerenders newick using regex. 
+        Caution: The regex expects there to still be distances (":") in the newick.
+        """
+        print("newick before removal of taxa: ")
+        print(self.newick)
+        self.newick = re.sub(r"(?<=[,(])[\d\w\.]+(?=\:)", "", self.newick)
+        print("newick after removal of taxa: ")
+        print(self.newick)
         
 def ask_user_to_continue():
     while True:
@@ -460,6 +486,7 @@ def main():
         )
         ########## ARGUMENTS ##########
         argument_parser.add_argument(
+            "-r",
             "--create_rand_dataset", 
             required=False, 
             action="store_true", 
@@ -468,18 +495,31 @@ def main():
             --create_dataset. This will randomize the following parameters and flags within reasonable ranges: 
             package, amount_taxa, randomize_distances, max_distance, dont_allow_multifurcations, branch_vertical_margin, 
             fontsize, linewidth. 
-            --number_directories sets the size of the dataset. --hierarchy_only removes distances from the newick and 
-            the image of each directory created with --create_rand_dataset."""
+            --number_directories sets the size of the dataset. --topology_only removes distances and taxa from the 
+            newick and the image of each directory created with --create_rand_dataset. --taxa_only removes just the 
+            distances in both."""
         )
         argument_parser.add_argument(
-            "--hierarchy_only",
+            "-x",
+            "--taxa_only",
             required=False,
             action="store_true",
             default=False,
             help="""On/Off flag. If specified removes distances from newick and image of the created directory. This is 
             helpful for creating datasets used for an initial training step in which models are just trained to recognize
-            the tree's hierarchy and not yet the branch lenghts. Can be combined with --create_rand_dataset. Default:
-            False."""
+            the tree's topology and taxa but not yet the branch lenghts. Can be combined with --create_rand_dataset. 
+            Default: False."""
+        )
+        argument_parser.add_argument(
+            "-t",
+            "--topology_only",
+            required=False,
+            action="store_true",
+            default=False,
+            help="""On/Off flag. If specified removes distances and taxa from newick and image of the created directory. 
+            This is helpful for creating datasets used for an initial training step in which models are just trained to recognize
+            the tree's topology. Can be combined with --create_rand_dataset. 
+            Default: False."""
         )
         argument_parser.add_argument("-o", "--outdir_path", required=False, type=str,
                                      help="""If specified the directory containing the Newick and the corresponding 
@@ -507,7 +547,8 @@ def main():
                                      help="""Type=Int. If distances are randomized this will be the maximum distance. 
                                      Default: 1.""")
         argument_parser.add_argument("-db", "--dont_display_lengths", required=False, action="store_true", default=False,
-                                     help="""On/Off flag. If specified then no branch lengths will be displayed. 
+                                     help="""On/Off flag. If specified then no branch lengths will be displayed in the 
+                                     image. Distances are still going to be present in the newick. 
                                      Default: False.""")
         argument_parser.add_argument("-c", "--circular_tree", required=False, action="store_true", default=False,
                                      help="""On/Off flag. ETE3 only. If True the tree in the image will be in 
@@ -538,7 +579,8 @@ def main():
         create_rand_dataset = args.create_rand_dataset
         fontsize = args.fontsize
         linewidth = args.linewidth
-        hierarchy_only = args.hierarchy_only
+        taxa_only = args.taxa_only
+        topology_only = args.topology_only
         # set the default values of fontsize and linewidth
         if not fontsize:
             if package == "ete3":
@@ -551,6 +593,8 @@ def main():
             elif package == "phylo":
                 linewidth = 2
         ########## CHECKS ##########
+        # TODO: remove unnecessary parameters from treerenders if top or taxa_only is specified
+        # TODO: warn user if he uses params compatible with top or taxa only => font, linewidth, branch lengths etc
         # negative or zero linewidth is set to 1
         if package == "ete3" and linewidth <= 0:
             linewidth = 1
@@ -606,19 +650,22 @@ def main():
                 branch_vertical_margin=branch_vertical_margin,
                 fontsize=fontsize,
                 linewidth=linewidth,
-                hierarchy_only=hierarchy_only,
+                taxa_only=taxa_only,
+                topology_only=topology_only,
             )
             # if the user wants to generate a dataset with randomized parameters
             if create_rand_dataset:
                 tree_render.randomize_treerender()
             ########## CREATE THE NEWICK ##########
-            # TODO: fix double _ issue
             newick = generate_newick(tree_render.amount_taxa)
-            # randomize the distances if a max distance is specified
-            if tree_render.randomize_distances:
-                newick = randomize_distances_func(newick, tree_render.max_distance)
             # set the finished newick as the treerenders newick
             tree_render.newick = newick
+            # randomize the distances if a max distance is specified
+            if tree_render.randomize_distances:
+                tree_render.randomize_distances_func()
+            # remove taxa if topology_only is specified TODO: move this into the save_image functions
+            # if tree_render.topology_only:
+            #     tree_render.remove_taxa_from_newick()
             # save directory to outfile path if it was specified
             # If not create the generated data directory with the data directory inside
             tree_render.create_output_directory()
@@ -626,7 +673,8 @@ def main():
             print("Parameters:")
             print(f"  Fontsize: {tree_render.fontsize}")
             print(f"  Linewidth: {tree_render.linewidth}")
-            print(f"  Hierarchy only: {tree_render.hierarchy_only}")
+            print(f"  Taxa only: {tree_render.taxa_only}")
+            print(f"  Topology only: {tree_render.topology_only}")
             print(f"  Randomize distances: {tree_render.randomize_distances}")
             print(f"  {f"Max distance: {tree_render.max_distance}" if tree_render.randomize_distances \
                 else "Distances: all exactly 1"}")
