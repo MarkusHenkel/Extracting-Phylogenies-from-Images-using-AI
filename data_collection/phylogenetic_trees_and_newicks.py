@@ -270,7 +270,8 @@ class TreeRender:
         newick_tree.rooted = True
         plt.axis("off")
         # remove taxa from newick if topology_only
-        self.remove_taxa_from_newick()
+        if self.topology_only:
+            self.remove_taxa_from_newick()
         if self.dont_display_lengths or self.taxa_only or self.topology_only:
             Phylo.draw(newick_tree, axes=axes, do_show=False, branch_labels=lambda c: None)
         else: 
