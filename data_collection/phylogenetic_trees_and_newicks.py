@@ -427,7 +427,7 @@ class TreeRender:
             self.fontsize = random.randint(8,20)
             self.linewidth = random.randint(1,20)
         if self.package == "phylo":
-            self.fontsize = random.randint(8,20)
+            self.fontsize = random.randint(12,20)
             # increase linewidth only if no edge labels are present
             if self.topology_only or self.taxa_only or self.dont_display_lengths:
                 self.linewidth = random.randint(1,20)
