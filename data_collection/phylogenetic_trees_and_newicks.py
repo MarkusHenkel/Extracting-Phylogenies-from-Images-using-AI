@@ -232,20 +232,22 @@ class TreeRender:
         fig = plt.figure(figsize=(30, 20), dpi=150)
         fontprops = fm.FontProperties(size=self.fontsize)
         axes = fig.add_subplot(1, 1, 1)
-        # add scalebar to plot manually (bio.phylo does not provide it)
-        scalebar = AnchoredSizeBar(
-            axes.transData,
-            1, '1.0', 'lower left', 
-            pad=2,
-            color='black',
-            frameon=False,
-            # size_vertical=1,
-            fontproperties=fontprops,
-            # bbox_to_anchor=Bbox.from_bounds(0,0,1,1),
-            bbox_to_anchor=(0.15, 0),
-            bbox_transform=axes.figure.transFigure
-        )
-        axes.add_artist(scalebar)
+        # if topo or taxa only is specified dont add the sizebar
+        if not (self.topology_only or self.taxa_only):
+            # add scalebar to plot manually (bio.phylo does not provide it)
+            scalebar = AnchoredSizeBar(
+                axes.transData,
+                1, '1.0', 'lower left', 
+                pad=2,
+                color='black',
+                frameon=False,
+                # size_vertical=1,
+                fontproperties=fontprops,
+                # bbox_to_anchor=Bbox.from_bounds(0,0,1,1),
+                bbox_to_anchor=(0.15, 0),
+                bbox_transform=axes.figure.transFigure
+            )
+            axes.add_artist(scalebar)
         # set line width and fontsize
         mpl.rcParams['lines.linewidth'] = self.linewidth # reasonable range: [1,10] (if no branch lengths)
         mpl.rcParams['font.size'] = self.fontsize # reasonable range: [8,16]
@@ -259,7 +261,7 @@ class TreeRender:
         else: 
             Phylo.draw(newick_tree, axes=axes, do_show=False, branch_labels=lambda c: c.branch_length)
         ###### DEBUGGING
-        # plt.show() # show the tree instead of writing a file each time
+        plt.show() # show the tree instead of writing a file each time
         if outfile_path:
             if not os.path.exists(os.path.dirname(outfile_path)):
                 os.makedirs(os.path.dirname(outfile_path), exist_ok=True)
@@ -316,10 +318,6 @@ class TreeRender:
                     faces.add_face_to_node(dist_face, node, column=0, position="branch-top")
         # set the layout
         treestyle.layout_fn = layout
-        # TODO: would it be smart to test if the AI is able to give leaves trivial names from top to bottom if the given 
-        # tree doesnt have taxa? 
-        treestyle.show_leaf_name = True # currently all leaf names are shown
-        treestyle.show_branch_support = False # branch support currently isnt shown 
         # treestyle.scale = 100 # 100 pixels per branch length unit
         # set default margin is 10 pixels
         if self.branch_vertical_margin:
@@ -340,8 +338,11 @@ class TreeRender:
         # creating text faces for adjusting fontsize does not replace the default font, turn off the default font 
         treestyle.show_leaf_name = False
         treestyle.show_branch_length = False
+        # if topo or taxa only is specified remove the sizebar
+        if self.topology_only or self.taxa_only:
+            treestyle.show_scale = False
         ###### DEBUGGING
-        # newick_tree.show(tree_style=treestyle) # show the tree instead of writing a file each time
+        newick_tree.show(tree_style=treestyle) # show the tree instead of writing a file each time
         # save the image to a specified path or into the current working directory with a specified name
         if outfile_path:
             if not os.path.exists(os.path.dirname(outfile_path)):
