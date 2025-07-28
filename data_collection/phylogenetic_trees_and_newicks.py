@@ -428,10 +428,12 @@ class TreeRender:
             self.linewidth = random.randint(1,20)
         if self.package == "phylo":
             self.fontsize = random.randint(8,20)
-            self.linewidth = 1
-            # TODO: until no solution for increasing the branch length offset is found the linewidth cant be increased
-            # for phylo because it omits the branch lengths
-            self.linewidth = 1
+            # increase linewidth only if no edge labels are present
+            if self.topology_only or self.taxa_only or self.dont_display_lengths:
+                self.linewidth = random.randint(1,20)
+            else: 
+                # in phylo branch lengths arent legible if linewidth is increased
+                self.linewidth = 1 
         self.amount_taxa = random.randint(5,20) # range: [5, 20]
         self.randomize_distances = random.choice([True,False])
         if self.randomize_distances:
@@ -537,8 +539,8 @@ def main():
                                      Default: 8 (ETE3), 16 (Bio.Phylo)""")
         argument_parser.add_argument("-l", "--linewidth", type=int, required=False, 
                                      help="""Choose the width of branches in pixels. Default: 1. Should not exceed 1 if
-                                     used with package phylo unless branch lengths are not displayed or they are 
-                                     allowed to not be legible well.""")
+                                     used with package phylo unless branch lengths are not displayed or they don't need
+                                     to be fully visible.""")
         argument_parser.add_argument("-p", "--package", required=False, choices=["phylo", "ete3"], default="ete3",
                                      help="""Specify which package is used in the creation of the image. 
                                      Choose between Bio.Phylo and ETE3 Toolkit. Default: ete3.""")
