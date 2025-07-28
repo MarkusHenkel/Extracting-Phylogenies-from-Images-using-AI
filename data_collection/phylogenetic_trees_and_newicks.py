@@ -466,7 +466,7 @@ class TreeRender:
         Removes taxa from the treerenders newick using regex. 
         Caution: The regex expects there to still be distances (":") in the newick.
         """
-        self.newick = re.sub(r"(?<=[,(])[\d\w\.]+(?=\:)", "", self.newick)
+        self.newick = re.sub(r"(?<=[,(])[\d\w\.\-\"\'#]+(?=\:)", "", self.newick)
     
 def ask_user_to_continue():
     while True:
