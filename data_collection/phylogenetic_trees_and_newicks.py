@@ -147,6 +147,7 @@ class TreeRender:
         branch_vertical_margin = 10, # number of pixels between adjacent branches
         taxa_only = False, # equivalent to removing distances in newick + dont_display_lengths = True
         topology_only = False,
+        align_taxa = False,
         ):
         # Attributes
         self.newick = newick
@@ -165,6 +166,7 @@ class TreeRender:
         self.linewidth = linewidth
         self.taxa_only = taxa_only
         self.topology_only = topology_only
+        self.align_taxa = align_taxa
     
     def is_multifurcating(self):
         """
@@ -260,18 +262,17 @@ class TreeRender:
             Phylo.draw(newick_tree, axes=axes, do_show=False, branch_labels=lambda c: None)
         else: 
             Phylo.draw(newick_tree, axes=axes, do_show=False, branch_labels=lambda c: c.branch_length)
+        ########## DEBUGGING
+        plt.tight_layout()
         ###### DEBUGGING
         # plt.show() # show the tree instead of writing a file each time
-        if outfile_path:
-            if not os.path.exists(os.path.dirname(outfile_path)):
-                os.makedirs(os.path.dirname(outfile_path), exist_ok=True)
-                plt.savefig(outfile_path, bbox_inches='tight') 
-                print(f"[{get_time()}] save_newick_image_phylo: Image was saved to newly created directory.")
-            else: 
-                plt.savefig(outfile_path, bbox_inches='tight')
-                print(f"[{get_time()}] save_newick_image_phylo: Image was saved to specified directory.")
-        else:
-            plt.savefig(f"phylo_tree_{self.file_id}.jpg", bbox_inches='tight')
+        if not os.path.exists(os.path.dirname(outfile_path)):
+            os.makedirs(os.path.dirname(outfile_path), exist_ok=True)
+            plt.savefig(outfile_path, bbox_inches='tight') 
+            print(f"[{get_time()}] save_newick_image_phylo: Image was saved to newly created directory.")
+        else: 
+            plt.savefig(outfile_path, bbox_inches='tight')
+            print(f"[{get_time()}] save_newick_image_phylo: Image was saved to specified directory.")
         plt.close()
         
     def save_newick_image_ete3(self, outfile_path):
@@ -307,8 +308,11 @@ class TreeRender:
                 if node.is_leaf():
                     # create face for taxon with chosen fontsize
                     taxa_face = faces.AttrFace("name", fsize=fontsize)
-                    # apply face to the current leaf
-                    faces.add_face_to_node(taxa_face, node, column=0)
+                    # apply face to the current leaf, align faces if specified
+                    if self.align_taxa:
+                        faces.add_face_to_node(taxa_face, node, column=0, position="aligned")
+                    else:
+                        faces.add_face_to_node(taxa_face, node, column=0)
             # if dont_display_lengths, taxa_only or topology_only are True, then dont create faces for distances
             if not (self.dont_display_lengths or self.taxa_only or self.topology_only):
                 if not node.is_root():
@@ -341,17 +345,16 @@ class TreeRender:
         # if topo or taxa only is specified remove the sizebar
         if self.topology_only or self.taxa_only:
             treestyle.show_scale = False
+        # add dotted lines that ete3 adds to edges when edge is too short for branch length label
+        treestyle.complete_branch_lines_when_necessary = True 
         ###### DEBUGGING
         # newick_tree.show(tree_style=treestyle) # show the tree instead of writing a file each time
-        # save the image to a specified path or into the current working directory with a specified name
-        if outfile_path:
-            if not os.path.exists(os.path.dirname(outfile_path)):
-                os.makedirs(os.path.dirname(outfile_path), exist_ok=True)
-                newick_tree.render(file_name=outfile_path, tree_style=treestyle)
-            else: 
-                newick_tree.render(file_name=outfile_path, tree_style=treestyle)
-        else:
-            newick_tree.render(file_name=f"ete3_tree_{self.file_id}", tree_style=treestyle)
+        # save the rendered image to file
+        if not os.path.exists(os.path.dirname(outfile_path)):
+            os.makedirs(os.path.dirname(outfile_path), exist_ok=True)
+            newick_tree.render(file_name=outfile_path, tree_style=treestyle)
+        else: 
+            newick_tree.render(file_name=outfile_path, tree_style=treestyle)
             
     def write_params_to_tsv(self, outfile_path):
         """
@@ -361,13 +364,13 @@ class TreeRender:
         """
         tsv_header = "random_distances\tmax_distance\tamount_taxa\tpackage\tbranch_lengths\tcircular_tree\t"
         tsv_header += "right_to_left_orientation\tmultifurcations\tbranch_vertical_margin[px]\t"
-        tsv_header += "fontsize\tlinewidth[px]\ttaxa_only\ttopology_only\t"
+        tsv_header += "fontsize\tlinewidth[px]\ttaxa_only\ttopology_only\talign_taxa\t"
         tsv_header += "\n"
         params = f"{self.randomize_distances}\t{self.max_distance}\t{self.amount_taxa}\t"
         params += f"{self.package}\t{not self.dont_display_lengths}\t{self.circular_tree}\t"
         params += f"{self.right_to_left_orientation}\t{not self.dont_allow_multifurcations}\t"
         params += f"{self.branch_vertical_margin}\t{self.fontsize}\t{self.linewidth}\t{self.taxa_only}\t"
-        params += f"{self.topology_only}\t" 
+        params += f"{self.topology_only}\t{self.align_taxa}\t" 
         with open(outfile_path, "w") as tsv_file:
             tsv_file.write(tsv_header)
             tsv_file.write(params)       
@@ -426,6 +429,7 @@ class TreeRender:
             self.branch_vertical_margin = random.randint(10, 100)
             self.fontsize = random.randint(8,20)
             self.linewidth = random.randint(1,20)
+            self.align_taxa = random.choice([True,False])
         if self.package == "phylo":
             self.fontsize = random.randint(12,20)
             # increase linewidth only if no edge labels are present
@@ -568,6 +572,9 @@ def main():
         argument_parser.add_argument("-vm", "--branch_vertical_margin", required=False, type=int, 
                                      help="""ETE3 only. Amount of pixels between two adjacent branches. 
                                      Should not be smaller than 5. Default: 10 pixels.""")
+        argument_parser.add_argument("-at", "--align_taxa", required=False, action="store_true", 
+                                     help="""On/Off flag. ETE3 only. If specified taxa are aligned to the right instead 
+                                     of written at the leaf node. Default: False.""")
         # Specified parameters
         args = argument_parser.parse_args()
         # if the amount of taxa is not specified it defaults to 10 taxa
@@ -587,6 +594,7 @@ def main():
         linewidth = args.linewidth
         taxa_only = args.taxa_only
         topology_only = args.topology_only
+        align_taxa = args.align_taxa
         # set the default values of fontsize and linewidth
         if not fontsize:
             if package == "ete3":
@@ -666,6 +674,7 @@ def main():
                 linewidth=linewidth,
                 taxa_only=taxa_only,
                 topology_only=topology_only,
+                align_taxa=align_taxa,
             )
             # if the user wants to generate a dataset with randomized parameters
             if create_rand_dataset:
@@ -695,6 +704,7 @@ def main():
             print(f"  Vertical margin for adjacent branches: {tree_render.branch_vertical_margin}") \
                 if tree_render.package == "ete3" else None
             print(f"  Branch lengths displayed: {not tree_render.dont_display_lengths}")
+            print(f"  Taxa aligned: {tree_render.align_taxa}")
             print("Newick:")
             print(f"  {tree_render.newick}")
 # execute the main method
