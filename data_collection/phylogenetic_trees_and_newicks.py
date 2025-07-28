@@ -262,8 +262,6 @@ class TreeRender:
             Phylo.draw(newick_tree, axes=axes, do_show=False, branch_labels=lambda c: None)
         else: 
             Phylo.draw(newick_tree, axes=axes, do_show=False, branch_labels=lambda c: c.branch_length)
-        ########## DEBUGGING
-        plt.tight_layout()
         ###### DEBUGGING
         # plt.show() # show the tree instead of writing a file each time
         if not os.path.exists(os.path.dirname(outfile_path)):
@@ -414,35 +412,52 @@ class TreeRender:
         self.write_params_to_tsv(tsv_path)
         print(f"[{get_time()}] create_output_directory: Used parameters were saved into .tsv.")
         
-    def randomize_treerender(self):
+    def randomize_treerender(self, excluded_params):
         """
         When applied to a TreeRender object, randomizes the following parameters:
         package, amount_taxa, randomize_distances, max_distance, dont_allow_multifurcations, branch_vertical_margin,
         fontsize, linewidth
         This way a user that does not want to understand all parameters can create a simple but 
         diverse dataset quickly.
+
+        Args:
+            excluded_params (List(str)): List of parameters that arent randomized
+
         """
-        self.package = random.choice(["ete3","phylo"])
-        self.dont_display_lengths = random.choice([True,False])
+        if "package" not in excluded_params:
+            self.package = random.choice(["ete3","phylo"])
+        if "dont_display_lengths" not in excluded_params:
+            self.dont_display_lengths = random.choice([True,False])
         if self.package == "ete3":
-            self.dont_allow_multifurcations = random.choice([True,False])
-            self.branch_vertical_margin = random.randint(10, 100)
-            self.fontsize = random.randint(8,20)
-            self.linewidth = random.randint(1,20)
-            self.align_taxa = random.choice([True,False])
+            if "dont_allow_multifurcations" not in excluded_params:
+                self.dont_allow_multifurcations = random.choice([True,False])
+            if "branch_vertical_margin" not in excluded_params:
+                self.branch_vertical_margin = random.randint(10, 100)
+            if "fontize" not in excluded_params:
+                self.fontsize = random.randint(8,20)
+            if "linewidth" not in excluded_params: 
+                self.linewidth = random.randint(1,15)
+            if "align_taxa" not in excluded_params:
+                self.align_taxa = random.choice([True,False])
         if self.package == "phylo":
-            self.fontsize = random.randint(12,20)
-            # increase linewidth only if no edge labels are present
-            if self.topology_only or self.taxa_only or self.dont_display_lengths:
-                self.linewidth = random.randint(1,20)
-            else: 
-                # in phylo branch lengths arent legible if linewidth is increased
-                self.linewidth = 1 
-        self.amount_taxa = random.randint(5,20) # range: [5, 20]
-        self.randomize_distances = random.choice([True,False])
-        if self.randomize_distances:
-            self.max_distance = random.randint(1, 10)
-        return self
+            if "fontsize" not in excluded_params:
+                self.fontsize = random.randint(12,20)
+            if "linewidth" not in excluded_params:
+                # increase linewidth only if no edge labels are present
+                if self.topology_only or self.taxa_only or self.dont_display_lengths:
+                    self.linewidth = random.randint(1,15)
+                else: 
+                    # in phylo branch lengths arent legible if linewidth is increased
+                    self.linewidth = 1 
+        if "amount_taxa" not in excluded_params:
+            self.amount_taxa = random.randint(5,20) # range: [5, 20]
+        if "randomize_distances" not in excluded_params:
+            self.randomize_distances = random.choice([True,False])
+        if "max_distance" not in excluded_params:
+            if self.randomize_distances:
+                self.max_distance = random.randint(1, 10)
+        ##### DEBUGGING
+        # return self
     
     def randomize_distances_func(self):
         """
@@ -495,17 +510,18 @@ def main():
         ########## ARGUMENTS ##########
         argument_parser.add_argument(
             "-r",
-            "--create_rand_dataset", 
+            "--create_rand_tree", 
             required=False, 
             action="store_true", 
             default=False,
-            help="""On/Off flag. Quickly create a diverse dataset instead of one type of image by specifying 
-            --create_dataset. This will randomize the following parameters and flags within reasonable ranges: 
+            help="""On/Off flag. Randomizes the following parameters and flags within reasonable ranges if they haven't
+            been specified: 
             package, amount_taxa, randomize_distances, max_distance, dont_allow_multifurcations, branch_vertical_margin, 
-            fontsize, linewidth, dont_display_lengths. 
-            --number_directories sets the size of the dataset. --topology_only removes distances and taxa from the 
-            newick and the image of each directory created with --create_rand_dataset. --taxa_only removes just the 
-            distances in both."""
+            fontsize, linewidth, dont_display_lengths, align_taxa. If --create_rand_tree and e.g. package are specified
+            then package won't be randomized. Quickly create a diverse dataset instead of one type of image by 
+            specifying --create_rand_tree in combination with --number_directories. --topology_only removes distances 
+            and taxa from the newick and the image of each directory created with --create_rand_tree. --taxa_only
+            removes just the distances in newick and image."""
         )
         argument_parser.add_argument(
             "-x",
@@ -515,7 +531,7 @@ def main():
             default=False,
             help="""On/Off flag. If specified removes distances from newick and image of the created directory. This is 
             helpful for creating datasets used for an initial training step in which models are just trained to recognize
-            the tree's topology and taxa but not yet the branch lenghts. Can be combined with --create_rand_dataset. 
+            the tree's topology and taxa but not yet the branch lenghts. Can be combined with --create_rand_tree. 
             Default: False."""
         )
         argument_parser.add_argument(
@@ -526,7 +542,7 @@ def main():
             default=False,
             help="""On/Off flag. If specified removes distances and taxa from newick and image of the created directory. 
             This is helpful for creating datasets used for an initial training step in which models are just trained to recognize
-            the tree's topology. Can be combined with --create_rand_dataset. 
+            the tree's topology. Can be combined with --create_rand_tree. 
             Default: False."""
         )
         argument_parser.add_argument("-o", "--outdir_path", required=False, type=str,
@@ -545,18 +561,18 @@ def main():
                                      help="""Choose the width of branches in pixels. Default: 1. Should not exceed 1 if
                                      used with package phylo unless branch lengths are not displayed or they don't need
                                      to be fully visible.""")
-        argument_parser.add_argument("-p", "--package", required=False, choices=["phylo", "ete3"], default="ete3",
+        argument_parser.add_argument("-p", "--package", required=False, choices=["phylo", "ete3"],
                                      help="""Specify which package is used in the creation of the image. 
                                      Choose between Bio.Phylo and ETE3 Toolkit. Default: ete3.""")
-        argument_parser.add_argument('-a', '--amount_taxa', required=False, type=int, default=10,
+        argument_parser.add_argument('-a', '--amount_taxa', required=False, type=int,
                                      help='Type=Int. Choose the preferred amount of generated taxa. Default: 10.')
-        argument_parser.add_argument('-rd', '--randomize_distances', required=False, action="store_true", default=False,
+        argument_parser.add_argument('-rd', '--randomize_distances', required=False, action="store_true", 
                                      help="""On/Off flag. If specified the distances (branch lengths) will be 
                                      randomized. Default: False.""")
-        argument_parser.add_argument('-md', '--max_distance', required=False, type=int, default=1,
+        argument_parser.add_argument('-md', '--max_distance', required=False, type=int, 
                                      help="""Type=Int. If distances are randomized this will be the maximum distance. 
                                      Default: 1.""")
-        argument_parser.add_argument("-db", "--dont_display_lengths", required=False, action="store_true", default=False,
+        argument_parser.add_argument("-db", "--dont_display_lengths", required=False, action="store_true", 
                                      help="""On/Off flag. If specified then no branch lengths will be displayed in the 
                                      image. Distances are still going to be present in the newick. 
                                      Default: False.""")
@@ -567,7 +583,7 @@ def main():
                                      default=False,help="""On/Off flag. ETE only. Specify if tree is oriented from 
                                      right to left (taxa on the left). Default: False (left to right orientation)""")
         argument_parser.add_argument("-da", "--dont_allow_multifurcations", required=False, action="store_true", 
-                                     default=False,help="""On/Off flag. ETE3 only. If specified then the resulting 
+                                     help="""On/Off flag. ETE3 only. If specified then the resulting 
                                      tree will be binary. Default: False.""")
         argument_parser.add_argument("-vm", "--branch_vertical_margin", required=False, type=int, 
                                      help="""ETE3 only. Amount of pixels between two adjacent branches. 
@@ -589,23 +605,67 @@ def main():
         dont_allow_multifurcations = args.dont_allow_multifurcations
         right_to_left_orientation = args.right_to_left_orientation 
         branch_vertical_margin = args.branch_vertical_margin
-        create_rand_dataset = args.create_rand_dataset
+        create_rand_tree = args.create_rand_tree
         fontsize = args.fontsize
         linewidth = args.linewidth
         taxa_only = args.taxa_only
         topology_only = args.topology_only
         align_taxa = args.align_taxa
-        # set the default values of fontsize and linewidth
+        ########## SET DEFAULT VALUES ##########
+        # remember if parameters relevant for randomize_treerender() were specified, those wont be randomized
+        used_parameters = []
+        # set default package
+        if not package:
+            package = "ete3"
+        else:
+            # package was specified, dont randomize the parameter later
+            used_parameters.append("package")
+        # set default fontsize and linewidth
         if not fontsize:
             if package == "ete3":
                 fontsize = 8
             elif package == "phylo":
                 fontsize = 16
+        else:
+            used_parameters.append("fontsize")
         if not linewidth:
             if package == "ete3":
                 linewidth = 1
             elif package == "phylo":
                 linewidth = 1
+        else:
+            used_parameters.append("linewidth")
+        # set default ete3 params
+        if package == "ete3":
+            if not branch_vertical_margin:
+                branch_vertical_margin = 10
+            else:
+                used_parameters.append("branch_vertical_margin")
+            if not align_taxa:
+                align_taxa = False
+            else:
+                used_parameters.append("align_taxa")
+        if not amount_taxa:
+            amount_taxa = 10
+        else: 
+            used_parameters.append("amount_taxa")
+        if not max_distance:
+            max_distance = 1.0
+        else: 
+            used_parameters.append("max_distance")
+        if not dont_display_lengths:
+            dont_display_lengths = False
+        else: 
+            used_parameters.append("dont_display_lengths")
+        if not dont_allow_multifurcations:
+            dont_allow_multifurcations = False
+        else: 
+            used_parameters.append("dont_allow_multifurcations")
+        if not randomize_distances:
+            randomize_distances = False
+        else: 
+            used_parameters.append("randomize_distances")
+        
         ########## CHECKS ##########
         # TODO: remove unnecessary parameters from treerenders if topo or taxa_only is specified (not fontsize !!!)
         # TODO: warn user if he uses params compatible with topo or taxa only => font, linewidth, branch lengths etc
@@ -617,9 +677,6 @@ def main():
         # negative or zero linewidth is set to 1
         if package == "ete3" and linewidth <= 0:
             linewidth = 1
-        # set default value of vertical margin if ete3 is used
-        if package == "ete3":
-            branch_vertical_margin = 10
         # warn user if they use ete3 parameters with a module other than ete3
         if (not package == "ete3") and (
             branch_vertical_margin or 
@@ -676,9 +733,9 @@ def main():
                 topology_only=topology_only,
                 align_taxa=align_taxa,
             )
-            # if the user wants to generate a dataset with randomized parameters
-            if create_rand_dataset:
-                tree_render.randomize_treerender()
+            # if the user wants to generate a tree with randomized parameters
+            if create_rand_tree:
+                tree_render.randomize_treerender(used_parameters)
             ########## CREATE THE NEWICK ##########
             tree_render.newick = generate_newick(tree_render.amount_taxa)
             # randomize the distances if a randomize_distances is specified
