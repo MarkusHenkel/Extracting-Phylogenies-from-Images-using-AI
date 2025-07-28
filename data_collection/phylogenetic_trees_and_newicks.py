@@ -261,7 +261,7 @@ class TreeRender:
         else: 
             Phylo.draw(newick_tree, axes=axes, do_show=False, branch_labels=lambda c: c.branch_length)
         ###### DEBUGGING
-        plt.show() # show the tree instead of writing a file each time
+        # plt.show() # show the tree instead of writing a file each time
         if outfile_path:
             if not os.path.exists(os.path.dirname(outfile_path)):
                 os.makedirs(os.path.dirname(outfile_path), exist_ok=True)
@@ -342,7 +342,7 @@ class TreeRender:
         if self.topology_only or self.taxa_only:
             treestyle.show_scale = False
         ###### DEBUGGING
-        newick_tree.show(tree_style=treestyle) # show the tree instead of writing a file each time
+        # newick_tree.show(tree_style=treestyle) # show the tree instead of writing a file each time
         # save the image to a specified path or into the current working directory with a specified name
         if outfile_path:
             if not os.path.exists(os.path.dirname(outfile_path)):
