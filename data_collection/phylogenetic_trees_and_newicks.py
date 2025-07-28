@@ -124,20 +124,6 @@ def generate_newick(amount_taxa=10):
         newick = re.sub(fr"(?<!\d){taxid}(?!\d)", remove_special_chars(taxon).replace(" ", "_"), newick) 
     return newick
 
-
-# TODO: superfluous, remove
-def taxids_from_newick(newick_string):
-    """
-    Given a newick tree containing taxon IDs return a list of all taxon IDs inside the string using regex.
-
-    Args:
-        newick_string (str): The tree in newick format
-
-    Returns:
-        List[str]: List containing all taxon IDs in order
-    """
-    return re.findall(r"[^)(,:][\d]+[^:]", newick_string)
-
 class TreeRender:
     """
     An instance of the TreeRender class holds all values needed for creating the newick, image and the tsv
@@ -202,22 +188,18 @@ class TreeRender:
         Solves multifurcations in the newick and the tree object using ete3's resolve_polytomy function
         """
         if not self.is_multifurcating:
-            # Debugging
-            # print("No multifurcations found.")
             return
-        # print(f"Current newick: {self.newick}")
         newick_tree = Tree(self.newick)
         newick_tree.resolve_polytomy(recursive=True)    
         # update the newick, so that the tree in the image and the newick match and remove support values by ete3
         self.newick = remove_support_vals(newick_tree.write())
-        # print(f"Updated newick: {self.newick}")
         # ete solves polytomies by adding branches with length zero, replace them with the specified branch lengths
         if self.randomize_distances == True:
             self.newick = re.sub(r"(?<=\):)0(?=[,\)])",
-                                    lambda m: str(round(random.uniform(0.00, self.max_distance), 2)), 
+                                    lambda m: str(round(random.uniform(1.00, self.max_distance), 2)), 
                                     self.newick)
         else:
-            self.newick = re.sub(r"(?<=\):)0(?=[,\)])", "1", self.newick)
+            self.newick = re.sub(r"(?<=\):)0(?=[,\)])", "1.0", self.newick)
         
     def save_newick_image(self, outfile_path):
         """
@@ -297,19 +279,17 @@ class TreeRender:
         Args:
             outfile_path (str): path where the image is saved at
         """
-        # check if the newick has correct formatting TODO: adjust is_newick for taxa and top only args
-        # if not is_newick(self.newick):
-        #     exit(f"[{get_time()}] Error in save_newick_image_ete3: Given newick isn't valid.")
-        # create ete3 Tree object 
+        # solve multifurcations if they aren't allowed and update the newick if there is a multifurcation
+        if self.dont_allow_multifurcations == True and self.is_multifurcating():
+            self.solve_multifurcations()
+            print(f"[{get_time()}] Solved multifurcation(s).")
+        # create ete3 Tree object of the finished newick, all further modifications are taken on the Tree object not the
+        # newick itself
         newick_tree = Tree(self.newick)
         # create treestyle object to adjust tree properties of Tree object
         treestyle = TreeStyle()
         # create nodestyle object to adjust node and edge properties of Tree object
         nodestyle = NodeStyle()
-        # solve multifurcations if they aren't allowed and update the newick if there is a multifurcation
-        if self.dont_allow_multifurcations == True and self.is_multifurcating():
-            self.solve_multifurcations()
-            print(f"[{get_time()}] Solved multifurcation(s).")
         # adjust line width
         nodestyle["vt_line_width"] = self.linewidth # reasonable range: [1,10]
         nodestyle["hz_line_width"] = self.linewidth # reasonable range: [1,10]
@@ -383,7 +363,7 @@ class TreeRender:
         tsv_header += "fontsize\tlinewidth[px]\ttaxa_only\ttopology_only\t"
         tsv_header += "\n"
         params = f"{self.randomize_distances}\t{self.max_distance}\t{self.amount_taxa}\t"
-        params += f"{self.package}\t{self.dont_display_lengths}\t{self.circular_tree}\t"
+        params += f"{self.package}\t{not self.dont_display_lengths}\t{self.circular_tree}\t"
         params += f"{self.right_to_left_orientation}\t{not self.dont_allow_multifurcations}\t"
         params += f"{self.branch_vertical_margin}\t{self.fontsize}\t{self.linewidth}\t{self.taxa_only}\t"
         params += f"{self.topology_only}\t" 
@@ -430,7 +410,6 @@ class TreeRender:
         self.write_params_to_tsv(tsv_path)
         print(f"[{get_time()}] create_output_directory: Used parameters were saved into .tsv.")
         
-    # TODO: implement create_rand_treerender()
     def randomize_treerender(self):
         """
         When applied to a TreeRender object, randomizes the following parameters:
@@ -440,6 +419,7 @@ class TreeRender:
         diverse dataset quickly.
         """
         self.package = random.choice(["ete3","phylo"])
+        self.dont_display_lengths = random.choice([True,False])
         if self.package == "ete3":
             self.dont_allow_multifurcations = random.choice([True,False])
             self.branch_vertical_margin = random.randint(10, 100)
@@ -466,10 +446,13 @@ class TreeRender:
             newick_string (str): The tree in newick format
             max_distance (float): upper limit of randomized distances
         """
-        self.newick = re.sub(
-            r"(?<=:)\d+",
-            lambda _: str(round(random.uniform(0.00, self.max_distance), 2)),
-            self.newick)
+        # only randomize between 1 and max distance to stop distances from being drawn over edges and being illegible 
+        # because their corresponding branch is too short
+        if self.max_distance >= 1:
+            self.newick = re.sub(
+                r"(?<=:)\d+",
+                lambda _: str(round(random.uniform(1.00, self.max_distance), 2)),
+                self.newick)
         
     def remove_distances_from_newick(self):
         """
@@ -512,7 +495,7 @@ def main():
             help="""On/Off flag. Quickly create a diverse dataset instead of one type of image by specifying 
             --create_dataset. This will randomize the following parameters and flags within reasonable ranges: 
             package, amount_taxa, randomize_distances, max_distance, dont_allow_multifurcations, branch_vertical_margin, 
-            fontsize, linewidth. 
+            fontsize, linewidth, dont_display_lengths. 
             --number_directories sets the size of the dataset. --topology_only removes distances and taxa from the 
             newick and the image of each directory created with --create_rand_dataset. --taxa_only removes just the 
             distances in both."""
@@ -623,6 +606,9 @@ def main():
         # negative or zero linewidth is set to 1
         if package == "ete3" and linewidth <= 0:
             linewidth = 1
+        # set default value of vertical margin if ete3 is used
+        if package == "ete3":
+            branch_vertical_margin = 10
         # warn user if they use ete3 parameters with a module other than ete3
         if (not package == "ete3") and (
             branch_vertical_margin or 
@@ -651,7 +637,7 @@ def main():
         # warn user if he wants to create more than one image
         if number_directories > 1:
             print(f"[{get_time()}] Warning: You are about to create {number_directories} directories. Are you sure you want to proceed?")
-            ask_user_to_continue()
+            ask_user_to_continue()      
         ########## MAIN LOOP ##########
         print("Data generation for extracting phylogenies from images using AI.")
         # execute module <number_directories> times
