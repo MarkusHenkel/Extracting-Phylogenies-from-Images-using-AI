@@ -7,14 +7,10 @@ from openai import OpenAI
 import datetime
 from argparse import RawTextHelpFormatter
 from ete3 import Tree
+import utilities as ut
 
 # environment variable for api key safety
 client = OpenAI(api_key = os.getenv("BA_API_KEY"))
-
-# TODO: add to utilities class
-# time for logs 
-def get_time():
-    return datetime.datetime.now().strftime("%Y-%b-%d %H:%M:%S")
 
 def get_image_from_directory(dir_path):
     """
@@ -28,9 +24,9 @@ def get_image_from_directory(dir_path):
     """
     image_path = ""
     if not os.path.exists(dir_path):
-        exit(f"[{get_time()}] Error in get_image_from_directory: Path does not exist.") 
+        exit(f"[{ut.get_time()}] Error in get_image_from_directory: Path does not exist.") 
     elif not os.path.isdir(dir_path):
-        exit(f"[{get_time()}] Error in get_image_from_directory: Path is not a directory.")
+        exit(f"[{ut.get_time()}] Error in get_image_from_directory: Path is not a directory.")
     else:
         for image in os.listdir(dir_path):
             if image.endswith(".png") or image.endswith(".jpg") or image.endswith(".jpeg"):
@@ -85,11 +81,11 @@ def write_newick_to_file(newick, model, file_id="", outfile_path=None):
             with open(outfile_path, "w") as nwk_file:
                 nwk_file.write(newick)
         else: 
-            exit(f"[{get_time()}] Error in write_newick_to_file: outfile_path {outfile_path} is not valid.")
+            exit(f"[{ut.get_time()}] Error in write_newick_to_file: outfile_path {outfile_path} is not valid.")
     # if no outfile path was given, save the newick in the current working directory
     else:
         if os.path.isfile(f".\\{model}_{file_id}.nwk"):
-            exit(f"[{get_time()}] Error in write_newick_to_file: File already exists.") 
+            exit(f"[{ut.get_time()}] Error in write_newick_to_file: File already exists.") 
         else:
             with open(f".\\{model}_{file_id}.nwk", "w") as nwk_file:
                 nwk_file.write(newick)
@@ -107,11 +103,11 @@ def get_image_format(image_path):
         str: image file format
     """
     if not re.search(r"(?<=\.)\w{3,4}$", image_path):
-        exit(f"[{get_time()}] Error in get_image_format: Given path doesn't have a file ending.")
+        exit(f"[{ut.get_time()}] Error in get_image_format: Given path doesn't have a file ending.")
     elif (file_ending := re.search(r"(?<=\.)\w{3,4}$", image_path).group()) in ["jpeg", "png", "jpg"]:
         return file_ending
     else:
-        exit(f"[{get_time()}] Error in get_image_format: Given file path does not end with .jpeg, .png or .jpg.")
+        exit(f"[{ut.get_time()}] Error in get_image_format: Given file path does not end with .jpeg, .png or .jpg.")
         
 def extract_newick_directly(image_path, model="gpt-4.1"):
     """
@@ -128,7 +124,7 @@ def extract_newick_directly(image_path, model="gpt-4.1"):
         str: response text by the model
     """
     if not model in ["gpt-4.1", "o4-mini", "gpt-4o"]:
-        exit(f"""[{get_time()}] Error in generate_newick_from_image_directly: Given model is not supported. 
+        exit(f"""[{ut.get_time()}] Error in generate_newick_from_image_directly: Given model is not supported. 
              Please choose from gpt-4.1, o4-mini or gpt-4o""")
     prompt = """Give me the newick of this phylogenetic tree with correct taxa and topology."""
     instructions =  """You are given images of phylogenetic trees and are tasked to respond with corresponding Newick 
@@ -159,20 +155,64 @@ def extract_newick_directly(image_path, model="gpt-4.1"):
     # parse the newick from the reponse
     if re.search(r"\(.+;", response.output_text):
         newick = re.search(r"\(.+;", response.output_text).group()
-        print(f"[{get_time()}] Generated Newick before postprocessing using AI:\n{newick}")
+        print(f"[{ut.get_time()}] Generated Newick before postprocessing using AI:\n{newick}")
     else:
-        exit(f"[{get_time()}] Error in generate_newick_format(): No Newick found in the response.")
+        exit(f"[{ut.get_time()}] Error in generate_newick_format(): No Newick found in the response.")
     # postprocess if newick formatting is wrong
     if not ptan.is_newick(newick):
-        print(f"[{get_time()}] generate_newick_from_image_directly: Formatting is wrong. Beginning postprocessing.")
+        print(f"[{ut.get_time()}] generate_newick_from_image_directly: Formatting is wrong. Beginning postprocessing.")
         newick = correct_newick(image_path, model)
         # check if formatting is still wrong after postprocessing
         if not ptan.is_newick(newick):
-            print(f"[{get_time()}] generate_newick_from_image_directly: AI-Postprocessing failed.") 
+            print(f"[{ut.get_time()}] generate_newick_from_image_directly: AI-Postprocessing failed.") 
     else:
-        print(f"[{get_time()}] generate_newick_from_image_directly: Formatting is correct. Skipping AI-postprocessing.")
-    print(f"[{get_time()}] Generated Newick:\n{newick}")
+        print(f"[{ut.get_time()}] generate_newick_from_image_directly: Formatting is correct. Skipping AI-postprocessing.")
+    print(f"[{ut.get_time()}] Generated Newick:\n{newick}")
     return newick
+
+def extract_newick_from_topology(topology):
+    if not topology.split("\n")[0] == "Clade()":
+        exit(f"[] Error in extract_newick_from_topology: Topology does not start with 'Clade()'")
+    def get_name(line):
+        return match.group() if (match := re.search(r"(?<=name=[\'\"]).+(?=[\'\"]\))", line)) else None
+    def get_dist(line):
+        return match.group() if (match := re.search(r"(?<=branch_length=)\d+(\.\d+){0,1}", line)) else None
+    def get_indentation_level(line):
+        # one tab is 4 spaces
+        return (len(line) - len(line.lstrip())) / 4
+    # get each line of the topology string
+    lines = topology.split("\n")
+    # create ete3 tree object with root
+    tree = Tree()
+    current_parent = tree
+    # remember the order of the internal nodes with a stack
+    internal_nodes_stack = [tree]
+    # loop starts with first child of the root
+    for i in range(1, len(lines)):
+        current_indentation = get_indentation_level(lines[i]) 
+        next_indentation = get_indentation_level(lines[i+1]) if i+1 < len(lines) else -1 
+        if i+1 < len(lines) and next_indentation > current_indentation:
+            # if next line is indented more then the current line is an internal node
+            internal_node = current_parent.add_child(dist=get_dist(lines[i]))
+            internal_nodes_stack.append(internal_node)
+            # update the current node to add children to current line
+            current_parent = internal_node
+        elif i+1 < len(lines) and next_indentation == current_indentation:
+            # if next line has the same indentation then the current line is a leaf 
+            current_parent.add_child(name=get_name(lines[i]), dist=get_dist(lines[i]))
+        elif i+1 < len(lines) and next_indentation < current_indentation:
+            # if next line has less indentation then the current line is a leaf and the next line belongs to another 
+            # parent node and the current one is finished
+            current_parent.add_child(name=get_name(lines[i]), dist=get_dist(lines[i]))
+            # pop all internal nodes that are now finished
+            for j in range(int(current_indentation - next_indentation)):
+                internal_nodes_stack.pop()
+            # assign current_parent the new topmost node of the stack
+            current_parent = internal_nodes_stack[len(internal_nodes_stack)-1]
+        else:
+            # there is no next line, add leaf to current internal node
+            current_parent.add_child(name=get_name(lines[i]), dist=get_dist(lines[i]))
+    return ut.remove_support_vals(tree.write())
 
 def extract_topology(image_path, model="gpt-4.1"):
     """
@@ -208,7 +248,7 @@ def extract_topology(image_path, model="gpt-4.1"):
         str: response text by the model
     """
     if not model in ["gpt-4.1", "o4-mini", "gpt-4o"]:
-        exit(f"""[{get_time()}] Error in generate_newick_from_image_directly: Given model is not supported. Please choose 
+        exit(f"""[{ut.get_time()}] Error in generate_newick_from_image_directly: Given model is not supported. Please choose 
              from gpt-4.1, o4-mini or gpt-4o""")
     prompt = """Describe this phylogenetic tree and its topology with hierarchical text that includes all taxa and
     distances."""
@@ -258,7 +298,8 @@ def extract_topology(image_path, model="gpt-4.1"):
     # TODO: extract newick manually from the topology
     topology = response.output_text
     print(topology)
-    return topology
+    newick = extract_newick_from_topology(topology)
+    return newick
     
 def correct_newick(image_path, generated_newick, model="gpt-4.1"):
     """
@@ -298,7 +339,7 @@ def correct_newick(image_path, generated_newick, model="gpt-4.1"):
     if re.search(r"\(.+;", response.output_text):
         updated_newick = re.search(r"\(.+;", response.output_text).group()
     else:
-        exit(f"[{get_time()}] Error in generate_newick_format(): No Newick found in the response.")
+        exit(f"[{ut.get_time()}] Error in generate_newick_format(): No Newick found in the response.")
     return updated_newick
 
 # def extract_newick_from_topology(topology):
@@ -320,20 +361,20 @@ def extract_newick_wrapper(extract_func, infile_path, outfile_path, model, file_
     # if the infile path is a dir get the img from the dir
     if os.path.isdir(infile_path):
         image_from_dir = get_image_from_directory(infile_path)
-        print(f"[{get_time()}] Given image: " + str(image_from_dir))
-        print(f"[{get_time()}] Used model: " + model)
+        print(f"[{ut.get_time()}] Given image: " + str(image_from_dir))
+        print(f"[{ut.get_time()}] Used model: " + model)
         generated_newick = extract_func(image_path=image_from_dir, model=model)
-        print(f"[{get_time()}] Newick was generated.")
+        print(f"[{ut.get_time()}] Newick was generated.")
         write_newick_to_file(newick=generated_newick, model=model, file_id=file_id, outfile_path=outfile_path)
     # if infile path is a file then get the img directly
     elif os.path.isfile(infile_path):
-        print(f"[{get_time()}] Given image: " + str(infile_path))
-        print(f"[{get_time()}] Used model: " + model)
+        print(f"[{ut.get_time()}] Given image: " + str(infile_path))
+        print(f"[{ut.get_time()}] Used model: " + model)
         generated_newick = extract_func(image_path=infile_path, model=model)
         write_newick_to_file(newick=generated_newick, model=model, outfile_path=outfile_path)
-        print(f"[{get_time()}] Newick was saved to {outfile_path}")
+        print(f"[{ut.get_time()}] Newick was saved to {outfile_path}")
     else:
-        exit(f"[{get_time()}] Error in extract_newick_wrapper: infile path {infile_path} is not valid.")
+        exit(f"[{ut.get_time()}] Error in extract_newick_wrapper: infile path {infile_path} is not valid.")
                     
 def main():
     argument_parser = argparse.ArgumentParser(
@@ -399,7 +440,7 @@ def main():
             file_id=file_id
         )
     else:
-        exit(f"[{get_time()}] Error in main(): Approach {approach} not valid.")
+        exit(f"[{ut.get_time()}] Error in main(): Approach {approach} not valid.")
             
 # execute the main method
 main()
