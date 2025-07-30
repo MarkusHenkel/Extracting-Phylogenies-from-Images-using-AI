@@ -39,17 +39,17 @@ def get_image_from_directory(dir_path):
 # TODO: add to utilities class
 def get_file_id(dir_path):
     """
-    Given the directory storing the image to be encoded, returns its file ID, a number appended to the data directory 
-    and the image and newick file 
+    Given the directory storing a file with an ID, returns its file ID.
+    The ID is a number appended to the data directory and the image and newick file.
 
     Args:
-        image_path (str): Path to the image to be encoded 
+        file_path (str): path to the file whose ID is returned 
 
     Returns:
         file_id (str): string of number at the end of the image filename 
     """
-    image_path = get_image_from_directory(dir_path)
-    if not (match_obj := re.search(r"\d+(?=\..{2,4})", image_path)) == None:
+    file_path = get_image_from_directory(dir_path)
+    if not (match_obj := re.search(r"\d+(?=\..{2,4})", file_path)) == None:
         file_id = match_obj.group()
         return file_id
     else: 
@@ -90,6 +90,8 @@ class Newick_Extraction_Job:
         model = "gpt-4.1",
         newick = None,
         topology = None,
+        taxa_only = False, # flag for when newick has no distances
+        topo_only = False, # flag for when newick has no distances and no taxa
         outfile_path = None,
         file_id = None,
         approach = "extract_nwk",
@@ -99,12 +101,14 @@ class Newick_Extraction_Job:
         self.model = model
         self.newick = newick
         self.topology = topology
+        self.taxa_only = taxa_only
+        self.topo_only = topo_only
         self.outfile_path = outfile_path
         self.file_id = file_id
         self.approach = approach
         self.extract_taxa = extract_taxa 
         
-    def write_newick_to_file(self):
+    def write_extracted_newick_to_file(self):
         """
         Called on a Newick_Extraction_Job object saves its newick at the specified path or in the current working 
         directory if no outfile path was specified. If outfile_path points to a file the newick is written into the file 
@@ -115,26 +119,35 @@ class Newick_Extraction_Job:
             outfile_path (str): path where newick is supposed to be saved at
         """
         if self.outfile_path:
-            app = "nwk" if self.approach == "extract_nwk" else "topo" if self.approach == "extract_topo" else None 
-                
+            app = "nwk_" if self.approach == "extract_nwk" else "topo_" if self.approach == "extract_topo" else None 
+            flag = "taxa_" if self.extract_taxa else None
             # if outfile path points to dir save it in the dir, if it points to a file then create the file
             if os.path.isdir(self.outfile_path):
-                newick_path = self.outfile_path + f"\\{self.model}_{app}_{self.file_id}.nwk"
-                with open(newick_path, "w") as nwk_file:
+                # create predictions directory for the extracted newick if it doesnt already exist in the specified dir
+                predictions_path = "predictions"
+                parent_path = self.outfile_path
+                newick_path = f"{self.model}_{app}{flag}{self.file_id}.nwk"
+                combined_path = os.path.join(parent_path, predictions_path, newick_path)
+                os.makedirs(combined_path, exist_ok=True)    
+                with open(combined_path, "w") as nwk_file:
                     nwk_file.write(self.newick)
             elif os.path.isfile(self.outfile_path):
                 with open(self.outfile_path, "w") as nwk_file:
                     nwk_file.write(self.newick)
             else: 
-                exit(f"[{ut.get_time()}] Error in write_newick_to_file: outfile_path {self.outfile_path} is not valid.")
+                raise FileNotFoundError(
+                    f"[{ut.get_time()}] Error in write_extracted_newick_to_file: outfile_path {self.outfile_path} is "
+                    "not valid."
+                )
         # if no outfile path was given, save the newick in the current working directory
         else:
-            if os.path.isfile(f".\\{self.model}_{app}_{self.file_id}.nwk"):
+            if os.path.isfile(f".\\{self.model}_{app}{flag}{self.file_id}.nwk"):
                 raise FileExistsError(f"[{ut.get_time()}] Error in write_newick_to_file: File already exists.") 
             else:
-                with open(f".\\{self.model}_{app}_{self.file_id}.nwk", "w") as nwk_file:
+                with open(f".\\{self.model}_{app}{flag}{self.file_id}.nwk", "w") as nwk_file:
                     nwk_file.write(self.newick)
                     
+    # TODO utilities class?
     def get_image_path(self):
         """
         Function for returning the image_path from a infile_path. If infile_path points to a dir the path to the first
@@ -151,8 +164,9 @@ class Newick_Extraction_Job:
         elif os.path.isfile(self.infile_path):
             return self.infile_path
         else:
-            raise FileNotFoundError(f"[{ut.get_time()}] Error in get_image_path(): Infile path {self.infile_path} does \
-                not exist.")
+            raise FileNotFoundError(
+                f"[{ut.get_time()}] Error in get_image_path(): Infile path {self.infile_path} does not exist."
+            )
             
     def extract_newick_directly(self):
         """
@@ -172,15 +186,32 @@ class Newick_Extraction_Job:
             raise ValueError(f"""[{ut.get_time()}] Error in generate_newick_from_image_directly: Given model is not 
                              supported. Please choose from gpt-4.1, o4-mini or gpt-4o""")
         img_path = self.get_image_path()
-        prompt = """Give me the newick of this phylogenetic tree with correct taxa and topology."""
-        instructions =  """You are given images of phylogenetic trees and are tasked to respond with corresponding Newick 
-        and just the Newick. 
-        Respond with the corresponding Newick in correct format: 
-        ((<taxon1>:<distance1>,<taxon2>:<distance2>):<clade_distance1>,<taxon3>=<distance3>); e.g.
-        ((Sipunculidae:2.37,Tenebrio_molitor:1.55):4.58,((Siren:1.43,Catreus:3.63):0.27,Notothenioidei:1.66):4.07);.
-        Make sure the Newick string includes the correct taxon names, all distances 
-        (if scalebar or branch lenghts are present) and most importantly the correct tree topology.
-        Make sure every opening parenthesis has a closing parenthesis. Make sure no parentheses pair is superfluous."""
+        prompt = """Give me the Newick format of this phylogenetic tree, preserving all taxa (if visible), all branch
+        lengths (if visible) and topology."""
+        instructions =  "You are given an image of a phylogenetic tree that may be multifurcating. You task is to "
+        "output only the tree in valid Newick format. In case there are no branch lengths then infere the branch "
+        "lengths from the scale bar."
+        """
+        Guidelines:
+        - The Newick string must include the taxon names exactly as shown in the image
+        - The Newick string must correspond to the topology exactly as shown in the image
+        - The Newick string must include branch lengths exactly as shown in the image
+        - In case there is a scale bar but no branch lengths in the whole image then infere the branch lengths from the 
+        scale bar
+        - In case there are no branch lengths in the whole image and no scale bar then dont include branch lengths in 
+        the Newick string
+        - In case there are no branch lengths, no scale bar and no taxa in the whole tree then include trivial taxon 
+        names in the Newick string e.g. taxon1, taxon2
+        """
+        """
+        Examples:
+        Taxa and branch lengths: 
+        ((<taxon1>:<branch_length1>,<taxon2>:<branch_length2>):<branch_length4>,<taxon3>:<branch_length3>);
+        ((A:2.37,B:1.55):4.58,((C:1.43,D:3.63):0.27,E:1.66):4.07);
+        No branch lengths.
+        ((<taxon1>,<taxon2>),<taxon3>);
+        ((A,B),((C,D),E));
+        """
         b64_image = encode_image(img_path)
         response = client.responses.create(
             # make model more deterministic
@@ -201,21 +232,10 @@ class Newick_Extraction_Job:
         # parse the newick from the reponse
         if re.search(r"\(.+;", response.output_text):
             newick = re.search(r"\(.+;", response.output_text).group()
-            print(f"[{ut.get_time()}] Generated Newick before postprocessing using AI:\n{newick}")
+            print(f"[{ut.get_time()}] Generated Newick before postprocessing using AI:\n{newick}") # TODO logs
         else:
             exit(f"[{ut.get_time()}] Error in generate_newick_format(): No Newick found in the response.")
-        # postprocess if newick formatting is wrong TODO: get results on if AI is capable of correcting the newick
-        if not ut.is_newick(newick):
-            print(f"[{ut.get_time()}] generate_newick_from_image_directly: Formatting is wrong. Beginning postprocessing.")
-            newick = correct_newick(img_path, self.model)
-            # check if formatting is still wrong after postprocessing TODO: do manual postprocessing
-            if not ut.is_newick(newick):
-                print(f"[{ut.get_time()}] generate_newick_from_image_directly: AI-Postprocessing failed.") 
-        else:
-            # TODO replace with logging
-            print(f"""[{ut.get_time()}] generate_newick_from_image_directly: Formatting is correct. Skipping 
-                  AI-postprocessing.""")
-        print(f"[{ut.get_time()}] Generated Newick:\n{newick}")
+        newick = self.postprocess_newick()
         return newick
 
     def extract_newick_from_topology(topology):
@@ -264,45 +284,9 @@ class Newick_Extraction_Job:
 
     def extract_topology(self):
         """
-        Given a path to an image (png, jpg or jpeg) and a OpenAI model returns the phylogenetic tree in hierarchical text
-        format for manual extraction. 
-        E.g.
-        Clade()
-            Clade(branch_length=3.54)
-                Clade(branch_length=3.42)
-                    Clade(branch_length=4.88, name='Crassulaceae')
-                    Clade(branch_length=3.53, name='Calycanthus_chinensis')
-                Clade(branch_length=1.8, name='Verruciconidia_persicina')
-            Clade(branch_length=3.27)
-                Clade(branch_length=0.42, name='Aquaspirillum_serpens')
-                Clade(branch_length=1.74, name='Wolbachia_pipientis')
-                
-        for:
-                                       _____________________ Crassulaceae
-                        ______________|
-         ______________|              |_______________ Calycanthus_chinensis
-         |             |
-        _|             |_______ Verruciconidia_persicina
-         |
-         |              _ Aquaspirillum_serpens
-         |_____________|
-                       |_______ Wolbachia_pipientis
-        
-        Args:
-            image_path (str): path to the image
-            model (str, optional): OpenAI model that is used. Defaults to "gpt-4.1".
-
-        Returns:
-            str: response text by the model
-        """
-        if not self.model in ["gpt-4.1", "o4-mini", "gpt-4o"]:
-            raise ValueError(f"""[{ut.get_time()}] Error in generate_newick_from_image_directly: Given model is not 
-                             supported. Please choose from gpt-4.1, o4-mini or gpt-4o""")
-        img_path = self.get_image_path()
-        prompt = """Describe this phylogenetic tree and its topology with hierarchical text that includes all taxa and
-        distances."""
-        instructions =  """You encode images of phylogenetic trees into this hierarchical text format similar to that of 
-        Bio.Phylo:
+        Given a path to an image (png, jpg or jpeg) and a OpenAI model returns the phylogenetic tree in hierarchical 
+        text format for manual extraction. 
+        Example with taxa and branch lengths:
         Clade()
             Clade(branch_length=3.54)
                 Clade(branch_length=3.42)
@@ -323,11 +307,59 @@ class Newick_Extraction_Job:
          |              _ Aquaspirillum_serpens
          |_____________|
                        |_______ Wolbachia_pipientis
-                    
-        Each tab of indentation means one level further down in hierarchy of the phylogenetic tree. No indentation means 
-        it is the root. One space of indentation means that the clade or leaf is the child of the root. Two tabs mean 
-        that the clade or leaf is the grandchild of the root and so on. 
-        Make sure all distances are included, that correct formatting is correct and that the taxon names are correct."""
+        
+        Args:
+            image_path (str): path to the image
+            model (str, optional): OpenAI model that is used. Defaults to "gpt-4.1".
+
+        Returns:
+            str: response text by the model
+        """
+        if not self.model in ["gpt-4.1", "o4-mini", "gpt-4o"]:
+            raise ValueError(f"""[{ut.get_time()}] Error in generate_newick_from_image_directly: Given model is not 
+                             supported. Please choose from gpt-4.1, o4-mini or gpt-4o""")
+        img_path = self.get_image_path()
+        prompt = "Give me the topology, taxon names (if visible) and branch lengths (if visible) of this phylogenetic "
+        "tree in hierarchical text format as if you created a Bio.Phylo Tree object and printed it."
+        instructions =  "You are given an image of a phylogenetic tree. Your task is to output the topology, taxon "
+        "names (if visible) and branch lengths (if visible) in a hierarchical text format similar to that of Bio.Phylo"
+        "when a Tree object is printed."
+        """
+        Example with taxon names and branch lengths: 
+        Clade()
+            Clade(branch_length=3.54)
+                Clade(branch_length=3.42)
+                    Clade(branch_length=4.88, name='Crassulaceae')
+                    Clade(branch_length=3.53, name='Calycanthus_chinensis')
+                Clade(branch_length=1.8, name='Verruciconidia_persicina')
+            Clade(branch_length=3.27)
+                Clade(branch_length=0.42, name='Aquaspirillum_serpens')
+                Clade(branch_length=1.74, name='Wolbachia_pipientis')
+        """      
+        """this corresponds to a tree like:
+                                        _____________________ Crassulaceae
+                         ______________|
+          ______________|              |_______________ Calycanthus_chinensis
+         |              |
+        _|              |_______ Verruciconidia_persicina
+         |
+         |              _ Aquaspirillum_serpens
+         |_____________|
+                       |_______ Wolbachia_pipientis
+        """
+        """
+        Guidelines:
+        - Only output the 
+        - Each indentation is 4 spaces
+        - Each indentation level corresponds to one clade deeper in the tree's hierarchy
+        - No indentation means it is the root
+        - One tab of indentation means that the clade or leaf is the child of the root
+        - Two tabs mean that the clade or leaf is the grandchild of the root and so on
+        - The topology string must include all taxon names and branch lengths
+        - In case there are no branch lengths in the whole image then infere the branch lengths from the scale bar
+        - In case there are no branch lengths, no scale bar in the whole image then set all branch lengths to 1
+        - In case there are no taxon names then use placeholder names like taxon1, taxon2
+        """
         b64_image = encode_image(img_path)
         response = client.responses.create(
             temperature=0,
@@ -347,46 +379,66 @@ class Newick_Extraction_Job:
         topology = response.output_text
         return topology
     
-def correct_newick(image_path, generated_newick, model="gpt-4.1"):
-    """
-    Given a newick with incorrect formatting and the original image, does a postprocessing step with focus on correcting 
-    spelling mistakes and mistakes in the newick formatting using the API once again
+    # def postprocess_newick(self):
+    #     """
+    #     Function for postprocessing the newick extracted by a AI model. If the current newick formatting is broken a 
+    #     AI-postprocessing step will be taken.
+        
+    #     """
+    #     # in case the tree is topology only, is_newick is only correct if format = 100 is passed 
+    #     format = "100" if self.topology_only else None
+    #     if not ut.is_newick(self.newick, format=format):
+    #         self.correct_newick()
+        
+        
+    def correct_newick(self):
+        """
+        Given a newick with incorrect formatting and the original image, does a postprocessing step with focus on 
+        correcting spelling mistakes and mistakes in the newick formatting using the API once again
 
-    Args:
-        image_path (str): path to the orignal image
-        generated_newick (str): generated newick that needs postprocessing
+        Args:
+            image_path (str): path to the orignal image
+            generated_newick (str): generated newick that needs postprocessing
 
-    Returns:
-        updated_newick: newick with improved spelling and formatting 
-    """
-    b64_image = encode_image(image_path)
-    prompt=f"""This is a phylogenetic tree and this the corresponding Newick: {generated_newick}. The Newick might have 
-    spelling mistakes, missing taxa and wrong formatting. Give me the correct Newick."""
-    instructions = """You encode images of phylogenetic trees into Newick format. Respond only with the newick.
-    Taxa are from the NCBI taxonomy. Correct Newick format: 
-    ((<taxon1>:<distance1>,<taxon2>:<distance2>):<clade_distance1>,<taxon3>=<distance3>);. 
-    Make sure every opening parenthesis has a closing parenthesis. Make sure there aren't any unnecessary parentheses, 
-    every parenthesis pair where the closing parentheses isn't followed by a distance i.e. ':0.1' or a semicolon is 
-    unnecessary."""
-    response = client.responses.create(
-        model=model,
-        instructions=instructions,
-        input=[
-            {
-                "role": "user", 
-                "content": [
-                    { "type": "input_text", "text": prompt},
-                    { "type": "input_image", "image_url": 
-                        f"data:image/{get_image_format(image_path)};base64,{b64_image}"},
-                ],
-            }
-        ],
-    )
-    if re.search(r"\(.+;", response.output_text):
-        updated_newick = re.search(r"\(.+;", response.output_text).group()
-    else:
-        exit(f"[{ut.get_time()}] Error in generate_newick_format(): No Newick found in the response.")
-    return updated_newick
+        Returns:
+            updated_newick: newick with improved spelling and formatting 
+        """
+        # in case the tree is topology only, is_newick is only correct if format = 100 is passed 
+        format = "100" if self.topo_only  else None
+        b64_image = encode_image(self.get_image_path())
+        prompt=f"""This is a phylogenetic tree and this the corresponding Newick: {self.newick}. The Newick might have 
+        spelling mistakes, missing taxa and wrong formatting. Give me the correct Newick."""
+        instructions = """You are given a string in Newick format that may have false formatting and spelling mistakes. 
+        Your task is to output a corresponding Newick with valid formatting.  
+        
+        Example of correct Newick format: 
+        ((<taxon1>:<branch_length1>,<taxon2>:<branch_length2>):<branch_length4>,<taxon3>:<branch_length3>);
+        
+        Guidelines:
+        - Respond only with the newick
+        - Make sure every opening parenthesis has a closing parenthesis 
+        - Make sure there aren't any unnecessary parentheses"""
+        response = client.responses.create(
+            model=self.model,
+            instructions=instructions,
+            input=[
+                {
+                    "role": "user", 
+                    "content": [
+                        { "type": "input_text", "text": prompt},
+                        { "type": "input_image", "image_url": 
+                            f"data:image/{get_image_format(self.get_image_path())};base64,{b64_image}"},
+                    ],
+                }
+            ],
+        )
+        if re.search(r"\(.+;", response.output_text):
+            updated_newick = re.search(r"\(.+;", response.output_text).group()
+        else:
+            raise ValueError(f"[{ut.get_time()}] No Newick found in the model's response.")
+        self.newick = updated_newick
+        if not ut.is_newick(self.newick, format=format):
+            print(f"[{ut.get_time()}] Postprocessing failed.") # TODO what to do if it fails? do another pp step?
 
        
 def main():
@@ -398,11 +450,7 @@ def main():
           directory will be used and the resulting newick saved into this directory. 'directly' refers to the AI being
           told to generate the Newick format of an image directly without an intermediate manual processing step which
           tests the AIs Newick formatting ablities.""",
-        # formatter_class=RawTextHelpFormatter
     )
-    #
-    # Arguments
-    #
     # argument for passing the path where the newick/image pair is saved at
     argument_parser.add_argument(
         "-a",
@@ -418,8 +466,8 @@ def main():
                                  chosen.""")
     argument_parser.add_argument('-o', '--outfile_path', required=False, type=str, 
                                  help="""Path where the newick is saved at. If the path points to a directory the 
-                                 newick will be saved there. If no path is provided the newick is saved in the 
-                                 current working directory.""")
+                                 newick will be saved there inside a predictions directory. If no path is provided the 
+                                 output is printed to console to allow for use in pipelines.""")
     argument_parser.add_argument("-m", "--model", required=False, choices=["gpt-4o", "gpt-4.1", "o4-mini"], type=str, 
                                  default="gpt-4.1",
                                  help="""Choose which OpenAI model is used in the generation of the newick string. 
@@ -449,19 +497,26 @@ def main():
     )
         
     # Mode: generation of newick
-    if approach == "extract_newick_directly":
+    if approach == "extract_nwk":
         extraction_job.newick = extraction_job.extract_newick_directly()
-        print(f"[{ut.get_time()}] Extracted Newick:")
-        print(extraction_job.newick)
-        extraction_job.write_newick_to_file()
-    elif approach == "extract_topology":
+        extraction_job.postprocess_newick()
+        print(f"[{ut.get_time()}] Extracted Newick:") # TODO replace with logging from logging module
+        if extraction_job.outfile_path:
+            extraction_job.write_extracted_newick_to_file()
+        else:
+            print(extraction_job.newick) 
+    elif approach == "extract_topo":
         extraction_job.topology = extraction_job.extract_topology()
-        print(f"[{ut.get_time()}] Extracted topology:")
+        print(f"[{ut.get_time()}] Extracted topology:") # TODO replace with logging from logging module
         print(extraction_job.topology)
         extraction_job.newick = extraction_job.extract_newick_from_topology()
-        print(f"[{ut.get_time()}] Extracted Newick:")
-        print(extraction_job.newick)
-        extraction_job.write_newick_to_file()
+        # postprocess newick
+        extraction_job.postprocess_newick()
+        print(f"[{ut.get_time()}] Extracted Newick:") # TODO replace with logging from logging module
+        if extraction_job.outfile_path:
+            extraction_job.write_extracted_newick_to_file()
+        else:
+            print(extraction_job.newick)
     else:
         raise ValueError(f"[{ut.get_time()}] Approach {approach} not valid.")
             
