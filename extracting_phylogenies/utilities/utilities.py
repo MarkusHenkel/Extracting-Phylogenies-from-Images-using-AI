@@ -1,7 +1,8 @@
 import datetime
 import re
 from ete3 import Tree
-import logging 
+import logging
+import os 
 
 # logs
 logger = logging.getLogger(__name__)
@@ -14,6 +15,24 @@ def get_time():
 def get_file_id():
     return str(datetime.datetime.now().strftime(r"%H%M%S%f"))
 
+def get_image_format(image_path):
+    """
+    Using regex matches 2-4 chars at the end of of the path and returns the matched string if it is either jpeg, 
+    png or jpg
+
+    Args:
+        image_path (str): path of the file
+
+    Returns:
+        str: image file format
+    """
+    if not os.path.isfile(image_path):
+        raise ValueError("Filepath is not valid.")
+    elif (file_ending := re.search(r"(?<=\.)\w{3,4}$", image_path).group()) in ["jpeg", "png", "jpg"]:
+        return file_ending
+    else:
+        raise ValueError(f"Expected image file (jpeg, png, jpg) but got {file_ending}")
+    
 def taxids_from_newick(newick):
     """
     Given a newick tree containing taxon IDs return a list of all taxon IDs inside the string using regex.
@@ -73,6 +92,32 @@ def is_newick(newick, format=None):
         return False
     return True
 
+def get_newick_format(newick):
+    """
+    Given a newick checks if it has format 100, 9, 5 or 0 in that order to accurately assign topology-only (100), 
+    taxa-only (9), newicks with taxa and branch lenghts for internal nodes and leaf nodes (5) and newicks with support 
+    values (0) their corresponding format
+
+    Args:
+        newick (str): newick with format 0, 5, 9 or 100
+
+    Raises:
+        ValueError: Newick isn't valid
+
+    Returns:
+        int: format
+    """
+    if is_newick(newick, format=100): # topology-only
+        return 100
+    elif is_newick(newick, format=9): # taxa-only
+        return 9
+    elif is_newick(newick, format=5): # taxa + branch lengths for leaves and internal nodes
+        return 5
+    elif is_newick(newick, format=0): # flexible
+        return 0 
+    else:
+        raise ValueError("Newick is not valid.")
+    
 def remove_distances(newick):
     """
     Removes distances from the treerenders newick using regex.
