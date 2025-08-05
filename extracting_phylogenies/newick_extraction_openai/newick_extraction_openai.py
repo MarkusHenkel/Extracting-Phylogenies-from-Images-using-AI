@@ -7,7 +7,7 @@ from openai import OpenAI
 import datetime
 from argparse import RawTextHelpFormatter
 from ete3 import Tree
-import utilities as ut
+from extracting_phylogenies.utilities import utilities as ut
 import logging
 
 # create logger
@@ -46,6 +46,7 @@ def get_file_id(dir_path):
     """
     Given the directory storing a file with an ID, returns its file ID.
     The ID is a number appended to the data directory and the image and newick file.
+    If not file ID is found an empty string is returned
 
     Args:
         file_path (str): path to the file whose ID is returned 
@@ -59,25 +60,6 @@ def get_file_id(dir_path):
         return file_id
     else: 
         return ""
-        
-# TODO: add to utilities class        
-def get_image_format(image_path):
-    """
-    Using regex matches 2-4 chars at the end of of the path and returns the matched string if it is either jpeg, 
-    png or jpg
-
-    Args:
-        image_path (str): path of the file
-
-    Returns:
-        str: image file format
-    """
-    if not re.search(r"(?<=\.)\w{3,4}$", image_path):
-        exit(f"[{ut.get_time()}] Error in get_image_format: Given path doesn't have a file ending.")
-    elif (file_ending := re.search(r"(?<=\.)\w{3,4}$", image_path).group()) in ["jpeg", "png", "jpg"]:
-        return file_ending
-    else:
-        exit(f"[{ut.get_time()}] Error in get_image_format: Given file path does not end with .jpeg, .png or .jpg.")
         
 # Function to encode the image
 def encode_image(image_path):
@@ -228,22 +210,25 @@ class Newick_Extraction_Job:
         ((,,),(,),((,),));
         """
         b64_image = encode_image(img_path)
-        response = client.responses.create(
-            # make model more deterministic
-            temperature=0,
-            model=self.model,
-            instructions=instructions,
-            input=[
+        # conditionally include temperature and top_p in the create() functions args because o4-mini does not support it
+        args = {
+            "model":self.model,
+            "instructions":instructions,
+            "input":[
                 {
                     "role": "user", 
                     "content": [
                         { "type": "input_text", "text": prompt},
                         { "type": "input_image", "image_url": 
-                            f"data:image/{get_image_format(img_path)};base64,{b64_image}"},
+                            f"data:image/{ut.get_image_format(img_path)};base64,{b64_image}"},
                     ],
                 }
             ],
-        )
+        }
+        if self.model == "gpt-4.1" or self.model == "gpt-4o":
+            args["temperature"] = 0.0
+            args["top_p"] = 0.0
+        response = client.responses.create(**args)
         console_logger.info(f"Model response: {response.output_text}")
         # parse the newick from the reponse
         if re.search(r"\(.+;", response.output_text):
@@ -396,21 +381,25 @@ class Newick_Extraction_Job:
         string e.g. Clade(branch_lengths=), Clade(branch_lengths=, name='taxon2')
         """
         b64_image = encode_image(img_path)
-        response = client.responses.create(
-            temperature=0,
-            model=self.model,
-            instructions=instructions,
-            input=[
+        # conditionally include temperature and top_p in the create() functions args because o4-mini does not support it
+        args = {
+            "model":self.model,
+            "instructions":instructions,
+            "input":[
                 {
                     "role": "user", 
                     "content": [
                         { "type": "input_text", "text": prompt},
                         { "type": "input_image", "image_url": 
-                            f"data:image/{get_image_format(img_path)};base64,{b64_image}"},
+                            f"data:image/{ut.get_image_format(img_path)};base64,{b64_image}"},
                     ],
                 }
             ],
-        )
+        }
+        if self.model == "gpt-4.1" or self.model == "gpt-4o":
+            args["temperature"] = 0.0
+            args["top_p"] = 0.0
+        response = client.responses.create(**args)
         topology = response.output_text
         # set taxa_only and topo_only to true if topology has no distances or no distances and no taxon names
         if not (branch_lengths := re.search(r"(?<=branch_length=)\d", topology)) and not \
@@ -507,20 +496,25 @@ class Newick_Extraction_Job:
         - Make sure there aren't any unnecessary parentheses
         - If the newick doesn't contain branch lengths and/or taxa, this is not part of the error 
         """
-        response = client.responses.create(
-            model=self.model,
-            instructions=instructions,
-            input=[
+        # conditionally include temperature and top_p in the create() functions args because o4-mini does not support it
+        args = {
+            "model":self.model,
+            "instructions":instructions,
+            "input":[
                 {
                     "role": "user", 
                     "content": [
                         { "type": "input_text", "text": prompt},
                         { "type": "input_image", "image_url": 
-                            f"data:image/{get_image_format(self.get_image_path())};base64,{b64_image}"},
+                            f"data:image/{ut.get_image_format(self.get_image_path())};base64,{b64_image}"},
                     ],
                 }
             ],
-        )
+        }
+        if self.model == "gpt-4.1" or self.model == "gpt-4o":
+            args["temperature"] = 0.0
+            args["top_p"] = 0.0
+        response = client.responses.create(**args)
         if re.search(r"\(.+;", response.output_text):
             updated_newick = re.search(r"\(.+;", response.output_text).group()
         else:
