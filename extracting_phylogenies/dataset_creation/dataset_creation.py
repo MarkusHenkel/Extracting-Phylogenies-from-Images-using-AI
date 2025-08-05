@@ -14,7 +14,7 @@ import pathlib
 from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar # size bar phylo
 import matplotlib.font_manager as fm # size bar phylo
 from matplotlib.transforms import Bbox # size bar phylo
-from ..Extracting-Phylogenies_from-Images-using-AI import utilities as ut
+from extracting_phylogenies.utilities import utilities as ut
 import sys
 import logging
 
@@ -317,7 +317,7 @@ class TreeRender:
         """
         tsv_header = "random_distances\tmax_distance\tamount_taxa\tpackage\tbranch_lengths\tcircular_tree\t"
         tsv_header += "right_to_left_orientation\tmultifurcations\tbranch_vertical_margin[px]\t"
-        tsv_header += "fontsize\tlinewidth[px]\ttaxa_only\ttopology_only\talign_taxa\t"
+        tsv_header += "fontsize\tlinewidth[px]\ttaxa_only\ttopo_only\talign_taxa\t"
         tsv_header += "\n"
         params = f"{self.randomize_distances}\t{self.max_distance}\t{self.amount_taxa}\t"
         params += f"{self.package}\t{not self.dont_display_lengths}\t{self.circular_tree}\t"
@@ -564,8 +564,8 @@ def main():
         console_logger.setLevel(logging.WARNING)
     else:
         console_logger.setLevel(logging.INFO)
+    print("\n\n\tData generation for extracting phylogenies from images using AI.\n\n")
     console_logger.info('Started')
-    console_logger.info(f"File ID: {file_id}")
     ########## SET DEFAULT VALUES ##########
     # remember if parameters relevant for randomize_treerender() were specified, those wont be randomized
     used_parameters = []
@@ -662,12 +662,12 @@ def main():
         print(f"Warning: You are about to create {number_directories} directories. Are you sure you want to proceed?")
         ask_user_to_continue()      
     ########## MAIN LOOP ##########
-    print("\n\n\tData generation for extracting phylogenies from images using AI.")
     # execute module <number_directories> times
     for i in range(number_directories):
         # unique file ID is just the current time (hour, minute, second, microsecond)
         # could be shortened to second and microsecond maybe
         file_id = str(datetime.datetime.now().strftime(r"%H%M%S%f"))
+        console_logger.info(f"File ID: {file_id}")
         ########## INSTANTIATING TREERENDER OBJECT ##########
         tree_render = TreeRender(
             newick="", # initialize with empty string, finished newick is added at a later point
@@ -718,7 +718,7 @@ def main():
         """
         console_logger.info(iteration_info)
         
-        print(f"Newick {i}:")
+        print(f"Newick {i+1}:")
         print(f"  {tree_render.newick}")
 # execute the main method
 if __name__ == "__main__":
