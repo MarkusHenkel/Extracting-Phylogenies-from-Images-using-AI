@@ -9,7 +9,6 @@ import os # for checking outfile paths of the tsv
 import sys
 import logging
 from extracting_phylogenies.utilities import utilities as ut
-from scipy.optimize import linear_sum_assignment 
 
 # create logger
 console_logger = logging.getLogger(__name__)
