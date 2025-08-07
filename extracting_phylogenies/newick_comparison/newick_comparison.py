@@ -8,39 +8,36 @@ from ete3 import Tree # turn newick into tree structure
 import os # for checking outfile paths of the tsv
 import sys
 import logging
+from extracting_phylogenies.utilities import utilities as ut
+from scipy.optimize import linear_sum_assignment 
 
 # create logger
 console_logger = logging.getLogger(__name__)
 
 def get_newick_from_file(path):
     """
-    Method for retrieving the Newick string from its file
+    Given a path to a newick file returns the newick.
+
     Args:
-        path (str): path to newick
+        path (str): path to newick file
 
     Raises:
-        ValueError: Newick is not valid
-        
-    Returns:
-        str: newick 
+        FileNotFoundError: if file doesnt exist
+        IsADirectoryError: if path is a directory path
+        ValueError: if Newick is not valid   
     """
-    if not os.path.exists(path) or not os.path.isfile(path):
-        raise FileNotFoundError("Path to newick is not valid.")
+    if not os.path.exists(path):
+        raise FileNotFoundError("File doesn't exist.")
+    elif os.path.isdir(path):
+        raise IsADirectoryError("Expected filepath but got directory path.")
     with open(path, "r") as nwk_file:
-        return nwk_file.read()
-    
-    
-def get_taxa(newick):
-    """
-    Returns all taxa from the given string in left to right order
-
-    Args:
-        newick (str): Newick string
-
-    Returns:
-        List(str): List of all taxa found 
-    """
-    return re.findall(r"(?<=[,\(])[A-Za-z0-9_.]+(?=:)", newick)
+        newick = nwk_file.read()
+    # check if newick is valid 
+    try:
+        ut.get_newick_format(newick)
+        return newick
+    except Exception as e:
+        raise e 
 
 def get_filename(filepath):
     """
@@ -135,15 +132,15 @@ class Comparison_Job():
         generated_newick_path = None,
         original_newick = None,
         generated_newick= None,
-        taxa_only = False,
-        topo_only = False, # flag for when newick is topology-only
+        format_original = None, # remember formats i.e. 0,5,9 or 100
+        format_generated = None, 
     ):
         self.original_newick_path = original_newick_path
         self.generated_newick_path = generated_newick_path
         self.original_newick = original_newick
         self.generated_newick = generated_newick
-        self.taxa_only = taxa_only
-        self.topo_only = topo_only
+        self.format_original = format_original
+        self.format_generated = format_generated
         
     def get_tsv_header(self, info_header):
         """
@@ -152,7 +149,7 @@ class Comparison_Job():
         Returns:
             str: .tsv header
         """
-        tsv_header = "newick1\tnewick2\ttaxa_only\ttopo_only\t#_taxa1\t#_taxa2\tcorrect_taxa_ratio\t#_equal_length\t"
+        tsv_header = "newick1\tnewick2\tformat1\tformat2\t#_taxa1\t#_taxa2\tcorrect_taxa_ratio\t#_equal_length\t"
         tsv_header += "#_unequal_length\tmean_ham_dist\tmean_ham_ratio\tmean_edit_dist\tmean_edit_dist_total\t"
         tsv_header += "mean_edit_ratio\tmean_edit_ratio_total\trf_dist\tmax_rf_dist\trf_ratio\t"
         tsv_header += "#_orig_edges\t#_gen_edges\t#_common_edges\t#_missing_edges\tcorrect_edge_ratio\t"
@@ -162,10 +159,8 @@ class Comparison_Job():
         return tsv_header
 
     def get_tsv_entry(self, param_entry, taxa_comp, dist_comp, topo_comp):
-        
-        console_logger.info(f"topo-only: {self.topo_only}")
         tsv_entry = f"{get_filename(self.original_newick_path)}\t{get_filename(self.generated_newick_path)}\t"
-        tsv_entry+=f"{self.taxa_only}\t{self.topo_only}\t"
+        tsv_entry+=f"{self.format_original}\t{self.format_generated}\t"
         if taxa_comp:
             tsv_entry+=f"{taxa_comp["taxa_count_original"]}\t{taxa_comp["taxa_count_generated"]}\t"
             tsv_entry+=f"{taxa_comp["correct_taxa_ratio"]}\t{taxa_comp["count_equal_length"]}\t{taxa_comp["count_unequal_length"]}\t"
@@ -199,11 +194,13 @@ class Comparison_Job():
         """
         # dictionary for the comparison of taxa
         taxa_dict = dict()
-        original_taxa = get_taxa(self.original_newick)
-        generated_taxa = get_taxa(self.generated_newick)
+        original_taxa = ut.get_taxa(self.original_newick)
+        generated_taxa = ut.get_taxa(self.generated_newick)
         # count taxa in both newicks
-        taxa_dict["taxa_count_original"] = len(original_taxa)
-        taxa_dict["taxa_count_generated"] = len(generated_taxa)
+        original_taxa_count = len(original_taxa)
+        generated_taxa_count = len(generated_taxa)
+        taxa_dict["taxa_count_original"] = original_taxa_count
+        taxa_dict["taxa_count_generated"] = generated_taxa_count
         # percentage of correct taxa, average hamming distance, average levenshtein distance
         match_counter = 0
         taxon_pairs = get_taxon_pairs_greedy(original_taxa, generated_taxa)
@@ -211,14 +208,15 @@ class Comparison_Job():
             if original == generated:
                 match_counter += 1
         taxa_dict["correct_taxa_ratio"] = round(match_counter/len(original_taxa), 4) 
-        # calculate average hamming distance and ratio for all taxa pairs whose strings have equal length
-        accu_hamming_distances = 0
-        accu_hamming_ratios = 0
         # count number of taxa with equal length (implies substitutions), unequal length (implies insertions/deletions)
         equal_length_counter = 0
         unequal_length_counter = 0
         # save which original taxa dont have a matching generated taxon
         mismatches = []
+        # calculate hamming distance and ratio over all taxa pairs, taxa pairs that cant be compared are maximally 
+        # "punished"
+        accu_hamming_distances = 0
+        accu_hamming_ratios = 0
         for original, generated in taxon_pairs.items():
             if generated: 
                 if len(original) == len(generated):
@@ -228,13 +226,21 @@ class Comparison_Job():
                     equal_length_counter += 1
                 else:
                     unequal_length_counter += 1
+                    # pairs that dont have matching lengths get max hamming distance (length of original newick)
+                    accu_hamming_ratios += 0.0
+                    accu_hamming_distances += len(original)
             else:
+                # original taxon without matching generated one also gets max hamming distance
+                accu_hamming_ratios += 0.0
+                accu_hamming_distances += len(original)
                 mismatches.append(original)
+        # save counts of matching length, mismatchingl length and taxon mismatches/missing taxa
         taxa_dict["count_equal_length"] = equal_length_counter
         taxa_dict["count_unequal_length"] = unequal_length_counter
         taxa_dict["mismatches"] = mismatches
-        taxa_dict["mean_hamming_distance"] = round(accu_hamming_distances/equal_length_counter, 4)
-        taxa_dict["mean_hamming_distance_ratio"] = round(accu_hamming_ratios/equal_length_counter, 4)
+        # save mean hamming distance and ratio
+        taxa_dict["mean_hamming_distance"] = round(accu_hamming_distances/original_taxa_count, 4)
+        taxa_dict["mean_hamming_distance_ratio"] = round(accu_hamming_ratios/original_taxa_count, 4)
         # calculate average edit distance and ratio for all taxa pairs
         accu_edit_distances = 0
         accu_edit_ratios = 0
@@ -266,19 +272,16 @@ class Comparison_Job():
         """
         original = self.original_newick
         generated = self.generated_newick
-        taxa_pairs = get_taxon_pairs_greedy(get_taxa(original),get_taxa(generated))
+        taxa_pairs = get_taxon_pairs_greedy(ut.get_taxa(original),ut.get_taxa(generated))
         # correct spelling mistakes by AI
         for original_taxon, generated_taxon in taxa_pairs.items():
             generated.replace(generated_taxon, original_taxon)
         original_tree = Tree(original, format=1)
         generated_tree = Tree(generated, format=1)
-        # TODO can midpoint outgrouping change the results? Why do i have to midpoint outgroup?
-        original_tree.set_outgroup(original_tree.get_midpoint_outgroup())
-        generated_tree.set_outgroup(generated_tree.get_midpoint_outgroup())
         # dictionary for the comparison of taxa
         topo_dict = dict()
         # before calculating RF distance check if both trees have the same taxa
-        rf, max_rf, _, original_edges, generated_edges, _, _ = original_tree.robinson_foulds(generated_tree)
+        rf, max_rf, _, original_edges, generated_edges, _, _ = original_tree.robinson_foulds(generated_tree, unrooted_trees=True)
         topo_dict["rf"] = rf
         topo_dict["max_rf"] = max_rf
         # modified normalized rf distance = 1 - rf / max_rf 
@@ -288,9 +291,9 @@ class Comparison_Job():
         topo_dict["count_generated_edges"] = len(generated_edges)
         edge_intersection = list(set(original_edges).intersection(set(generated_edges)))
         topo_dict["count_common_edges"] = len(edge_intersection)
-        topo_dict["common_edges"] = edge_intersection
+        # topo_dict["common_edges"] = edge_intersection
         missing_original_edges = list(set(original_edges).difference(set(generated_edges)))
-        topo_dict["missing_original_edges"] = missing_original_edges
+        # topo_dict["missing_original_edges"] = missing_original_edges
         topo_dict["count_missing_original_edges"] = len(missing_original_edges)
         topo_dict["correct_edges_ratio"] = round(len(edge_intersection)/len(original_edges), 4)
         return topo_dict
@@ -349,7 +352,7 @@ def main():
         console_logger.setLevel(logging.WARNING)
     else:
         console_logger.setLevel(logging.INFO)
-    console_logger.info("Starting")
+    console_logger.info("Starting newick_comparison")
     ########## CREATE COMPARISON_JOB OBJECT ##########
     # get newicks from their files
     original_newick = get_newick_from_file(path_original_newick)
@@ -357,6 +360,8 @@ def main():
     # check if newicks are valid and set their format
     format_original = ut.get_newick_format(original_newick)
     format_generated = ut.get_newick_format(generated_newick)
+    console_logger.info(f"Newick 1: {original_newick}")
+    console_logger.info(f"Newick 2: {generated_newick}")
     # set flags, if one of the two newicks e.g. doesnt have distances, their distances wont be compared
     if format_original == 100 or format_generated == 100:
         topo_only = True
@@ -366,23 +371,23 @@ def main():
         taxa_only = True
     else: 
         taxa_only = False
-    console_logger.info(
-        f"Newicks {"are topology-only" if topo_only else "are taxa-only" if taxa_only else "have taxa and branch lengths"}."
-    )
     # create job object
     comparison_job = Comparison_Job(
         original_newick_path=path_original_newick,
         generated_newick_path=path_generated_newick,
         original_newick=original_newick,
         generated_newick=generated_newick,
-        taxa_only=taxa_only,
-        topo_only=topo_only,
+        format_original=format_original,
+        format_generated=format_generated,
     )
     ########## CHECKS ##########
     # if both newicks have different formats warn user and only compare attributes both newicks have
     if not format_original == format_generated:
-        raise ValueError(f"Newicks have different formats. Format original newick: {format_original}. Format "
+        console_logger.warning(f"Newicks have different formats. Format original newick: {format_original}. Format "
                          f"generated newick: {format_generated}.")
+    console_logger.info(
+        f"Comparing {"just topology" if topo_only else "just taxa" if taxa_only else "taxa and branch lengths"}."
+    )
     if outfile_path:
         if os.path.isdir(outfile_path):
             raise IsADirectoryError("--outfile: Expected filepath but got directory path.")
@@ -400,11 +405,12 @@ def main():
             info_header = tsv.readline()
             info_entry = tsv.readline()
     # calculate comparisons for taxa-only pairs
-    if comparison_job.taxa_only:
+    if taxa_only:
         taxa_comp_dict = comparison_job.compare_taxa()
         dist_comp_dict = None
         topo_comp_dict = comparison_job.compare_topology()
-    elif comparison_job.topo_only:
+    # calculate only topology comparison
+    elif topo_only:
         # TODO add comparison for topology-only trees
         taxa_comp_dict = None
         dist_comp_dict = None
@@ -430,7 +436,7 @@ def main():
     else: 
         print(tsv_header)
         print(tsv_entry)
-    console_logger.info("Finished")
+    console_logger.info("Finished newick_comparison")
 # execute main method
 if __name__ == "__main__":
     main()
