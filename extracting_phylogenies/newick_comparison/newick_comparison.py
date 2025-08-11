@@ -156,7 +156,8 @@ class Comparison_Job():
         tsv_header += "#_orig_edges\t#_gen_edges\t#_common_edges\t#_missing_edges\tcorrect_edge_ratio\t"
         if info_header:
             tsv_header += info_header
-        tsv_header += "\n"
+        # make sure there is only one newline at the end of the header
+        tsv_entry = tsv_entry.rstrip("\n") + "\n"
         return tsv_header
 
     def get_tsv_entry(self, param_entry, taxa_comp, dist_comp, topo_comp):
@@ -170,10 +171,18 @@ class Comparison_Job():
             tsv_entry+=f"{taxa_comp["mean_edit_ratio_total"]}\t"
         else:
             tsv_entry+="None\tNone\tNone\tNone\tNone\tNone\tNone\tNone\tNone\tNone\tNone\t"
+        if dist_comp:
+            tsv_entry+=f"{dist_comp["mean_abs_diff"]}\t{dist_comp["median_abs_diff"]}\t"
+            tsv_entry+=f"{dist_comp["mean_neg_diff"]}\t{dist_comp["median_neg_diff"]}\t"
+            tsv_entry+=f"{dist_comp["mean_pos_diff"]}\t{dist_comp["median_pos_diff"]}\t"
+            tsv_entry+=f"{dist_comp["mean_pairwise_diff"]}\t{dist_comp["median_pairwise_diff"]}\t"
+        else:
+            tsv_entry+="None\tNone\tNone\tNone\tNone\tNone\tNone\tNone\tNone\tNone\tNone\t"
         if topo_comp:
             tsv_entry+=f"{topo_comp["rf"]}\t{topo_comp["max_rf"]}\t{topo_comp["rf_ratio"]}\t{topo_comp["count_original_edges"]}\t"
-            tsv_entry+=f"{topo_comp["count_generated_edges"]}\t{topo_comp["count_common_edges"]}\t"
-            tsv_entry+=f"{topo_comp["count_missing_original_edges"]}\t{topo_comp["correct_edges_ratio"]}\t"
+            tsv_entry+=f"{topo_comp["count_missing_edges"]}\t{topo_comp["count_common_edges"]}\t"
+            tsv_entry+=f"{topo_comp["correct_edges_ratio"]}\t{topo_comp["treeko_dist"]}\t"
+            tsv_entry+=f"{topo_comp["count_multifurcations_original"]}\t{topo_comp["count_multifurcations_original"]}"
         else:
             tsv_entry+="None\tNone\tNone\tNone\tNone\tNone\tNone\tNone\t"
         if param_entry:
@@ -355,17 +364,17 @@ class Comparison_Job():
                     leaf_parent_dist_diffs.append(orig_leaf.dist) 
         # calculate mean and median over absolute differences
         abs_leaf_parent_dist_diffs = map(abs,leaf_parent_dist_diffs)
-        dist_dict["mean_abs_leaf_dist_diff"] = mean(abs_leaf_parent_dist_diffs)
-        dist_dict["median_abs_leaf_dist_diff"] = median(abs_leaf_parent_dist_diffs)
+        dist_dict["mean_abs_diff"] = mean(abs_leaf_parent_dist_diffs)
+        dist_dict["median_abs_diff"] = median(abs_leaf_parent_dist_diffs)
         # calculate mean diff over negative values i.e. generated edge is longer than original one
         neg_leaf_parent_dist_diffs = [diff for diff in leaf_parent_dist_diffs if diff < 0]
         # "on average how much shorter are shorter edges i.e. edges that the model made shorter than they actually are?"
-        dist_dict["mean_neg_leaf_dist_diff"] = mean(neg_leaf_parent_dist_diffs)
-        dist_dict["median_neg_leaf_dist_diff"] = median(neg_leaf_parent_dist_diffs)
+        dist_dict["mean_neg_diff"] = mean(neg_leaf_parent_dist_diffs)
+        dist_dict["median_neg_diff"] = median(neg_leaf_parent_dist_diffs)
         # calculate mean diff over positive values i.e. generated edge is shorter than original one
         pos_leaf_parent_dist_diffs = [diff for diff in leaf_parent_dist_diffs if diff > 0]
-        dist_dict["mean_pos_leaf_dist_diff"] = mean(pos_leaf_parent_dist_diffs)
-        dist_dict["median_pos_leaf_dist_diff"] = median(pos_leaf_parent_dist_diffs)
+        dist_dict["mean_pos_diff"] = mean(pos_leaf_parent_dist_diffs)
+        dist_dict["median_pos_diff"] = median(pos_leaf_parent_dist_diffs)
         # list for pairwise distances
         abs_pairwise_distances = []
         generated_taxa = ut.get_taxa(generated_tree)
@@ -385,8 +394,8 @@ class Comparison_Job():
             ####### DEBUGGING
             console_logger.info(f"distance: {abs_pairwise_distance}")
             abs_pairwise_distances.append(abs_pairwise_distance)
-        dist_dict["mean_abs_pairwise_leaf_dist_diff"] = mean(abs_pairwise_distances)
-        dist_dict["median_abs_pairwise_leaf_dist_diff"] = median(abs_pairwise_distances)
+        dist_dict["mean_pairwise_diff"] = mean(abs_pairwise_distances)
+        dist_dict["median_pairwise_diff"] = median(abs_pairwise_distances)
         return dist_dict
 
 def main():
