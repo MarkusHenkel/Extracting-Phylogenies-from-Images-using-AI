@@ -9,6 +9,8 @@ import os # for checking outfile paths of the tsv
 import sys
 import logging
 from extracting_phylogenies.utilities import utilities as ut
+from itertools import combinations
+from statistics import mean, median
 
 # create logger
 console_logger = logging.getLogger(__name__)
@@ -44,7 +46,7 @@ def get_filename(filepath):
     Throws exceptions if path doesnt exist or isnt a filepath. 
 
     Args:
-        filepath (_type_): path to a file
+        filepath (str): path to a file
 
     Raises:
         IsADirectoryError: If the path is a directory path
@@ -258,12 +260,13 @@ class Comparison_Job():
         taxa_dict["mean_edit_ratio"] = round(accu_edit_ratios/(len(taxon_pairs)- len(mismatches)), 4)
         taxa_dict["mean_edit_ratio_total"] = round(accu_edit_ratios/len(taxon_pairs), 4)
         return taxa_dict
-
+    
     def compare_topology(self):
         """
         Given 2 Newick strings compares the topologies of their resulting trees.
-        To compare the topologies we need to change the taxa of the generated newick to their counterpart in the original newick
-        i.e. the actual taxa the AI just read wrong (correcting spelling mistakes made by the AI). 
+        To compare the topologies, taxa of the generated newick are assigned to their counterpart in the original newick.
+        However the AI might have spelling mistakes and thus taxa from the generated newick are greedily assigned to the
+        taxa of the original newick
 
         Args:
             original (str): original newick
@@ -271,12 +274,13 @@ class Comparison_Job():
         """
         original = self.original_newick
         generated = self.generated_newick
+        # TODO add optimal pairing for edge cases like taxon1, taxon2
         taxa_pairs = get_taxon_pairs_greedy(ut.get_taxa(original),ut.get_taxa(generated))
         # correct spelling mistakes by AI
         for original_taxon, generated_taxon in taxa_pairs.items():
             generated.replace(generated_taxon, original_taxon)
-        original_tree = Tree(original, format=1)
-        generated_tree = Tree(generated, format=1)
+        original_tree = Tree(original)
+        generated_tree = Tree(generated)
         # dictionary for the comparison of taxa
         topo_dict = dict()
         # before calculating RF distance check if both trees have the same taxa
@@ -295,13 +299,76 @@ class Comparison_Job():
         # topo_dict["missing_original_edges"] = missing_original_edges
         topo_dict["count_missing_original_edges"] = len(missing_original_edges)
         topo_dict["correct_edges_ratio"] = round(len(edge_intersection)/len(original_edges), 4)
+        # TODO compare TreeKO distance
+        # TODO compare multifurcations
         return topo_dict
     
-    # TODO: for those common edges how different from each other are the distances, 
     def compare_distances(self):    
-        distances_dict = dict()
-    
+        """
+        Compares two newicks of the
 
+        Returns:
+            _type_: _description_
+        """
+        dist_dict = dict()
+        # get newicks
+        original = self.original_newick
+        generated = self.generated_newick
+        # get taxa pairs
+        taxa_pairs = get_taxon_pairs_greedy(ut.get_taxa(original),ut.get_taxa(self.generated_newick))
+        for original_taxon, generated_taxon in taxa_pairs.items():
+            generated.replace(generated_taxon, original_taxon)
+        # create trees with updated taxa
+        original_tree = Tree(original)
+        generated_tree = Tree(generated)
+        # save every leaf-parent distance difference
+        leaf_parent_dist_diffs = []
+        # get leaf nodes
+        orig_leaf_nodes = [node for node in original_tree.traverse() if node.is_leaf()]
+        gen_leaf_nodes = [node for node in generated_tree.traverse() if node.is_leaf()]
+        # iterate over leaf nodes and save the differences
+        for orig_leaf in orig_leaf_nodes:
+            for gen_leaf in gen_leaf_nodes:
+                if orig_leaf.name == gen_leaf.name:
+                    leaf_parent_dist_diffs.append(orig_leaf.dist - gen_leaf.dist) 
+                else:
+                    # if the leaf doesnt exist in the generated tree then append the maximum difference
+                    leaf_parent_dist_diffs.append(orig_leaf.dist) 
+        # calculate mean and median over absolute differences
+        abs_leaf_parent_dist_diffs = map(abs,leaf_parent_dist_diffs)
+        dist_dict["mean_abs_leaf_dist_diff"] = mean(abs_leaf_parent_dist_diffs)
+        dist_dict["median_abs_leaf_dist_diff"] = median(abs_leaf_parent_dist_diffs)
+        # calculate mean diff over negative values i.e. generated edge is longer than original one
+        neg_leaf_parent_dist_diffs = [diff for diff in leaf_parent_dist_diffs if diff < 0]
+        # "on average how much shorter are shorter edges i.e. edges that the model made shorter than they actually are?"
+        dist_dict["mean_neg_leaf_dist_diff"] = mean(neg_leaf_parent_dist_diffs)
+        dist_dict["median_neg_leaf_dist_diff"] = median(neg_leaf_parent_dist_diffs)
+        # calculate mean diff over positive values i.e. generated edge is shorter than original one
+        pos_leaf_parent_dist_diffs = [diff for diff in leaf_parent_dist_diffs if diff > 0]
+        dist_dict["mean_pos_leaf_dist_diff"] = mean(pos_leaf_parent_dist_diffs)
+        dist_dict["median_pos_leaf_dist_diff"] = median(pos_leaf_parent_dist_diffs)
+        # list for pairwise distances
+        abs_pairwise_distances = []
+        generated_taxa = ut.get_taxa(generated_tree)
+        # get all leaf to leaf distances and calculate difference to corresponding distance in generated tree
+        for orig_leaf1, orig_leaf2 in combinations(orig_leaf_nodes):
+            ############# DEBUGGING
+            console_logger.info(f"leaf 1: {orig_leaf1}, leaf 2: {orig_leaf2}")
+            # get distance between both leaves in the original tree
+            orig_dist = original_tree.get_distance(orig_leaf1, orig_leaf2)
+            # get distance between both leaves in the generated tree
+            if orig_leaf1 in generated_taxa and orig_leaf2 in generated_taxa:
+                generated_dist = generated_tree.get_distance(orig_leaf1, orig_leaf2)
+            else:
+                # if the pair doesnt exist in the generated tree then let the difference be the maximum distance possible
+                generated_dist = 0
+            abs_pairwise_distance = abs(orig_dist-generated_dist)
+            ####### DEBUGGING
+            console_logger.info(f"distance: {abs_pairwise_distance}")
+            abs_pairwise_distances.append(abs_pairwise_distance)
+        dist_dict["mean_abs_pairwise_leaf_dist_diff"] = mean(abs_pairwise_distances)
+        dist_dict["median_abs_pairwise_leaf_dist_diff"] = median(abs_pairwise_distances)
+        return dist_dict
 
 def main():
     argument_parser = argparse.ArgumentParser(
@@ -406,7 +473,7 @@ def main():
     # calculate comparisons for taxa-only pairs
     if taxa_only:
         taxa_comp_dict = comparison_job.compare_taxa()
-        dist_comp_dict = None
+        dist_comp_dict = comparison_job.compare_distances()
         topo_comp_dict = comparison_job.compare_topology()
     # calculate only topology comparison
     elif topo_only:
@@ -415,7 +482,6 @@ def main():
         dist_comp_dict = None
         topo_comp_dict = None
     else:
-        # TODO add comparison of distances
         taxa_comp_dict = comparison_job.compare_taxa()
         dist_comp_dict = comparison_job.compare_distances()
         topo_comp_dict = comparison_job.compare_topology()
