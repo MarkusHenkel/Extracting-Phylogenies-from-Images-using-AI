@@ -124,7 +124,7 @@ def remove_distances(newick):
     Regex expects them to be right after a ":".
 
     Args:
-        newick (str): _description_
+        newick (str): newick
 
     Returns:
         str: newick string without distances
@@ -135,7 +135,7 @@ def remove_taxa_from_newick(newick):
     """
     Given a newick removes all taxa inside using regex.
     Regex expects them right after a '(' and right before ')', ',' and ':'.
-    Special characters allowed inside the taxa: _ . - " ' and #
+    Special characters allowed inside the taxa: _ . - " ' / and #
     
     
     Args:
@@ -144,7 +144,20 @@ def remove_taxa_from_newick(newick):
     Returns:
         str: newick string without taxa
     """
-    return re.sub(r"(?<=[,(])[\d\w\.\-\"\'#]+(?=[\:\)\,])", "", newick)
+    return re.sub(r"(?<=[,(])[\d\w\.\-\"\'#\/]+(?=[\:\)\,])", "", newick)
+
+def get_taxa(newick):
+    """
+    Returns all taxa from the given string in left to right order.
+    Special characters allowed inside the taxa: _ . - " ' / and #
+
+    Args:
+        newick (str): Newick string
+
+    Returns:
+        List(str): List of all taxa found 
+    """
+    return re.findall(r"(?<=[,(])[\d\w\.\-\"\'#\/]+(?=[\:\)\,])", newick)
 
 def remove_special_chars(taxon):
     r"""
@@ -207,3 +220,21 @@ def balance_parentheses(newick):
         newick = ("(" * number_opening) + newick
     newick += ";"
     return newick
+
+def is_multifurcating(node):
+    if len(node.get_children()) > 2:
+        return True
+    for node in node.get_children():
+        if is_multifurcating(node):
+            return True
+    return False
+
+def count_multifurcations(newick):
+    def count_multifurcations_worker(node):
+        count = 0
+        if len(node.get_children()) > 2:
+            count += 1
+        for child in node.get_children():
+            count += count_multifurcations_worker(child) 
+        return count
+    return count_multifurcations_worker(Tree(newick))
