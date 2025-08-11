@@ -259,8 +259,8 @@ class Comparison_Job():
         # also calculate a ratio over pairs with generated newick and over all pairs
         taxa_dict["mean_edit_ratio"] = round(accu_edit_ratios/(len(taxon_pairs)- len(mismatches)), 4)
         taxa_dict["mean_edit_ratio_total"] = round(accu_edit_ratios/len(taxon_pairs), 4)
-        return taxa_dict
-    
+        return taxa_dict  
+
     def compare_topology(self):
         """
         Given 2 Newick strings compares the topologies of their resulting trees.
@@ -281,34 +281,53 @@ class Comparison_Job():
             generated.replace(generated_taxon, original_taxon)
         original_tree = Tree(original)
         generated_tree = Tree(generated)
+        original = original_tree.write()
+        generated = generated_tree.write()
         # dictionary for the comparison of taxa
         topo_dict = dict()
         # before calculating RF distance check if both trees have the same taxa
-        rf, max_rf, _, original_edges, generated_edges, _, _ = original_tree.robinson_foulds(generated_tree, unrooted_trees=True)
-        topo_dict["rf"] = rf
-        topo_dict["max_rf"] = max_rf
+        comp_dict = original_tree.compare(generated_tree)
+        topo_dict["rf"] = comp_dict["rf"]
+        topo_dict["max_rf"] = comp_dict["max_rf"]
         # modified normalized rf distance = 1 - rf / max_rf 
-        topo_dict["rf_ratio"] = 1 - rf / max_rf
+        topo_dict["rf_ratio"] = 1 - comp_dict["rf"] / comp_dict["max_rf"]
         # compare edges
-        topo_dict["count_original_edges"] = len(original_edges)
-        topo_dict["count_generated_edges"] = len(generated_edges)
-        edge_intersection = list(set(original_edges).intersection(set(generated_edges)))
-        topo_dict["count_common_edges"] = len(edge_intersection)
-        # topo_dict["common_edges"] = edge_intersection
-        missing_original_edges = list(set(original_edges).difference(set(generated_edges)))
-        # topo_dict["missing_original_edges"] = missing_original_edges
-        topo_dict["count_missing_original_edges"] = len(missing_original_edges)
-        topo_dict["correct_edges_ratio"] = round(len(edge_intersection)/len(original_edges), 4)
-        # TODO compare TreeKO distance
-        # TODO compare multifurcations
+        topo_dict["ref_edges_in_source"] = len(list(comp_dict["ref_edges_in_source"]))
+        count_original_edges = len(list(comp_dict["ref_edges"]))
+        count_common_edges = len(list(comp_dict["common_edges"]))
+        count_missing_edges = count_original_edges - count_common_edges
+        topo_dict["count_original_edges"] = count_original_edges
+        topo_dict["count_missing_edges"] = count_missing_edges
+        topo_dict["count_common_edges"] = count_common_edges
+        topo_dict["correct_edges_ratio"] = round(count_common_edges/count_original_edges, 4)
+        topo_dict["treeko_dist"] = comp_dict["treeko_dist"]
+        # compare multifurcations
+        topo_dict["count_multifurcations_original"] = ut.count_multifurcations(original)
+        topo_dict["count_multifurcations_generated"] = ut.count_multifurcations(generated)
         return topo_dict
     
     def compare_distances(self):    
         """
-        Compares two newicks of the
+        Compares distances of the original newick to the distances of the generated newick and returns dict with 
+        following keys: \n
+        mean_abs_leaf_dist_diff: mean of the absolute differences in leaf branch lengths of corresponding leaves,
+        leaf branch lengths refer to the length of the branch that connects a leaf to its parent and the difference is 
+        calculated for corresponding leaves i.e. branch length of taxon1 in original newick - branch length of taxon1 in 
+        generated newick
+        median_abs_leaf_dist_diff: median 
+        mean_neg_leaf_dist_diff: mean of the negative differences of the above leaf branch lengths i.e. those branches 
+        the model made longer than in the original newick 
+        median_neg_leaf_dist_diff: median 
+        mean_pos_leaf_dist_diff: mean of the positive differences i.e. those branches the model made shorter
+        median_pos_leaf_dist_diff: median
+        mean_abs_pairwise_leaf_dist_diff: mean of the differences of all pairwise leaf distances. For each pair of 
+        leaves in the original tree the length of the path connecting them is computed. The same is done for the 
+        corresponding pair in the generated tree and then substracted from the length of the original path.  
+        median_abs_pairwise_leaf_dist_diff: median
+        
 
         Returns:
-            _type_: _description_
+            dict: dict with comparisons
         """
         dist_dict = dict()
         # get newicks
