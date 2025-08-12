@@ -150,14 +150,24 @@ class Comparison_Job():
         Returns:
             str: .tsv header
         """
-        tsv_header = "newick1\tnewick2\tformat1\tformat2\t#_taxa1\t#_taxa2\tcorrect_taxa_ratio\t#_equal_length\t"
-        tsv_header += "#_unequal_length\tmean_ham_dist\tmean_ham_ratio\tmean_edit_dist\tmean_edit_dist_total\t"
-        tsv_header += "mean_edit_ratio\tmean_edit_ratio_total\trf_dist\tmax_rf_dist\trf_ratio\t"
-        tsv_header += "#_orig_edges\t#_gen_edges\t#_common_edges\t#_missing_edges\tcorrect_edge_ratio\t"
+        # taxa comparison
+        tsv_header = "newick1\tnewick2\tformat1\tformat2\tcount_taxa1\tcount_taxa2\tcorrect_taxa_ratio\t"
+        tsv_header+="count_equal_length\tcount_unequal_length\tmean_ham_dist\tmean_ham_ratio\tmean_edit_dist\t"
+        tsv_header+="mean_edit_dist_total\tmean_edit_ratio\tmean_edit_ratio_total\t"
+        # distance comparison
+        tsv_header+="mean_abs_diff_leaf_dists\tmedian_abs_diff_leaf_dists\tmean_neg_diff_leaf_dists\t"
+        tsv_header+="median_neg_diff_leaf_dists\tmean_pos_diff_leaf_dists\t"
+        tsv_header+="median_pos_diff_leaf_dists\tmean_pairwise_dist_diff\tmedian_pairwise_dist_diff\t"
+        # topology comparison
+        tsv_header+="rf_dist\tmax_rf_dist\trf_ratio\tcount_orig_edges\tref_edges_in_source\tcount_missing_edges\t"
+        tsv_header+="count_common_edges\tcorrect_edge_ratio\t"
+        # tsv_header+="treeko_dist\t" # TODO treeko dist always NA
+        tsv_header+="count_multifurcations_original\t"
+        tsv_header+="count_multifurcations_generated\t"
         if info_header:
             tsv_header += info_header
         # make sure there is only one newline at the end of the header
-        tsv_entry = tsv_entry.rstrip("\n") + "\n"
+        tsv_header = tsv_header.rstrip("\n") + "\n"
         return tsv_header
 
     def get_tsv_entry(self, param_entry, taxa_comp, dist_comp, topo_comp):
@@ -179,10 +189,12 @@ class Comparison_Job():
         else:
             tsv_entry+="None\tNone\tNone\tNone\tNone\tNone\tNone\tNone\tNone\tNone\tNone\t"
         if topo_comp:
-            tsv_entry+=f"{topo_comp["rf"]}\t{topo_comp["max_rf"]}\t{topo_comp["rf_ratio"]}\t{topo_comp["count_original_edges"]}\t"
+            tsv_entry+=f"{topo_comp["rf"]}\t{topo_comp["max_rf"]}\t{topo_comp["rf_ratio"]}\t"
+            tsv_entry+=f"{topo_comp["count_original_edges"]}\t{topo_comp["ref_edges_in_source"]}\t"
             tsv_entry+=f"{topo_comp["count_missing_edges"]}\t{topo_comp["count_common_edges"]}\t"
-            tsv_entry+=f"{topo_comp["correct_edges_ratio"]}\t{topo_comp["treeko_dist"]}\t"
-            tsv_entry+=f"{topo_comp["count_multifurcations_original"]}\t{topo_comp["count_multifurcations_original"]}"
+            tsv_entry+=f"{topo_comp["correct_edges_ratio"]}\t"
+            # tsv_entry+=f"{topo_comp["treeko_dist"]}\t" # TODO treeko dist always NA
+            tsv_entry+=f"{topo_comp["count_multifurcations_original"]}\t{topo_comp["count_multifurcations_original"]}\t"
         else:
             tsv_entry+="None\tNone\tNone\tNone\tNone\tNone\tNone\tNone\t"
         if param_entry:
@@ -295,13 +307,13 @@ class Comparison_Job():
         # dictionary for the comparison of taxa
         topo_dict = dict()
         # before calculating RF distance check if both trees have the same taxa
-        comp_dict = original_tree.compare(generated_tree)
+        comp_dict = original_tree.compare(generated_tree, unrooted=True)
         topo_dict["rf"] = comp_dict["rf"]
         topo_dict["max_rf"] = comp_dict["max_rf"]
         # modified normalized rf distance = 1 - rf / max_rf 
-        topo_dict["rf_ratio"] = 1 - comp_dict["rf"] / comp_dict["max_rf"]
-        # compare edges
-        topo_dict["ref_edges_in_source"] = len(list(comp_dict["ref_edges_in_source"]))
+        topo_dict["rf_ratio"] = round(1 - comp_dict["rf"] / comp_dict["max_rf"],4)
+        # how many edges in the original newick are found in the generated newick 
+        topo_dict["ref_edges_in_source"] = comp_dict["ref_edges_in_source"]
         count_original_edges = len(list(comp_dict["ref_edges"]))
         count_common_edges = len(list(comp_dict["common_edges"]))
         count_missing_edges = count_original_edges - count_common_edges
@@ -309,7 +321,7 @@ class Comparison_Job():
         topo_dict["count_missing_edges"] = count_missing_edges
         topo_dict["count_common_edges"] = count_common_edges
         topo_dict["correct_edges_ratio"] = round(count_common_edges/count_original_edges, 4)
-        topo_dict["treeko_dist"] = comp_dict["treeko_dist"]
+        # topo_dict["treeko_dist"] = round(float(comp_dict["treeko_dist"]),4) # TODO treeKO dist is NA
         # compare multifurcations
         topo_dict["count_multifurcations_original"] = ut.count_multifurcations(original)
         topo_dict["count_multifurcations_generated"] = ut.count_multifurcations(generated)
@@ -319,20 +331,20 @@ class Comparison_Job():
         """
         Compares distances of the original newick to the distances of the generated newick and returns dict with 
         following keys: \n
-        mean_abs_leaf_dist_diff: mean of the absolute differences in leaf branch lengths of corresponding leaves,
-        leaf branch lengths refer to the length of the branch that connects a leaf to its parent and the difference is 
-        calculated for corresponding leaves i.e. branch length of taxon1 in original newick - branch length of taxon1 in 
-        generated newick
-        median_abs_leaf_dist_diff: median 
-        mean_neg_leaf_dist_diff: mean of the negative differences of the above leaf branch lengths i.e. those branches 
-        the model made longer than in the original newick 
-        median_neg_leaf_dist_diff: median 
-        mean_pos_leaf_dist_diff: mean of the positive differences i.e. those branches the model made shorter
-        median_pos_leaf_dist_diff: median
-        mean_abs_pairwise_leaf_dist_diff: mean of the differences of all pairwise leaf distances. For each pair of 
-        leaves in the original tree the length of the path connecting them is computed. The same is done for the 
-        corresponding pair in the generated tree and then substracted from the length of the original path.  
-        median_abs_pairwise_leaf_dist_diff: median
+        mean_abs_leaf_dist_diff: mean of the absolute differences in leaf branch lengths of corresponding leaves,\n
+        leaf branch lengths refer to the length of the branch that connects a leaf to its parent and the difference is \n
+        calculated for corresponding leaves i.e. branch length of taxon1 in original newick - branch length of taxon1 in \n
+        generated newick\n
+        median_abs_leaf_dist_diff: median \n
+        mean_neg_leaf_dist_diff: mean of the negative differences of the above leaf branch lengths i.e. those branches \n
+        the model made longer than in the original newick \n
+        median_neg_leaf_dist_diff: median \n
+        mean_pos_leaf_dist_diff: mean of the positive differences i.e. those branches the model made shorter\n
+        median_pos_leaf_dist_diff: median\n
+        mean_abs_pairwise_leaf_dist_diff: mean of the differences of all pairwise leaf distances. For each pair of \n
+        leaves in the original tree the length of the path connecting them is computed. The same is done for the \n
+        corresponding pair in the generated tree and then substracted from the length of the original path.  \n
+        median_abs_pairwise_leaf_dist_diff: median\n
         
 
         Returns:
@@ -351,37 +363,46 @@ class Comparison_Job():
         generated_tree = Tree(generated)
         # save every leaf-parent distance difference
         leaf_parent_dist_diffs = []
-        # get leaf nodes
+        # get original leaf nodes
         orig_leaf_nodes = [node for node in original_tree.traverse() if node.is_leaf()]
-        gen_leaf_nodes = [node for node in generated_tree.traverse() if node.is_leaf()]
-        # iterate over leaf nodes and save the differences
+        # create dict with names of generated nodes and their nodes for fast access
+        generated_leaf_nodes = dict()
+        for node in generated_tree.traverse():
+            if node.is_leaf():
+                generated_leaf_nodes[node.name] = node 
+        # iterate over leaf nodes and compute the difference of original leaf branch length and generated one
         for orig_leaf in orig_leaf_nodes:
-            for gen_leaf in gen_leaf_nodes:
-                if orig_leaf.name == gen_leaf.name:
-                    leaf_parent_dist_diffs.append(orig_leaf.dist - gen_leaf.dist) 
-                else:
-                    # if the leaf doesnt exist in the generated tree then append the maximum difference
-                    leaf_parent_dist_diffs.append(orig_leaf.dist) 
+            ########## DEBUGGING
+            # console_logger.info(orig_leaf)
+            # console_logger.info(orig_leaf.dist)
+            # check if generated newick contains the current leaf
+            if generated_leaf_nodes[orig_leaf.name]:
+                leaf_parent_dist_diffs.append(orig_leaf.dist - generated_leaf_nodes[orig_leaf.name].dist) 
+            else:
+                # if the leaf doesnt exist in the generated tree then append the maximum difference
+                leaf_parent_dist_diffs.append(orig_leaf.dist) 
         # calculate mean and median over absolute differences
-        abs_leaf_parent_dist_diffs = map(abs,leaf_parent_dist_diffs)
-        dist_dict["mean_abs_diff"] = mean(abs_leaf_parent_dist_diffs)
-        dist_dict["median_abs_diff"] = median(abs_leaf_parent_dist_diffs)
+        console_logger.info(leaf_parent_dist_diffs)
+        abs_leaf_parent_dist_diffs = list(map(abs,leaf_parent_dist_diffs))
+        console_logger.info(abs_leaf_parent_dist_diffs)
+        dist_dict["mean_abs_diff"] = round(mean(abs_leaf_parent_dist_diffs),4)
+        dist_dict["median_abs_diff"] = round(median(abs_leaf_parent_dist_diffs),4)
         # calculate mean diff over negative values i.e. generated edge is longer than original one
         neg_leaf_parent_dist_diffs = [diff for diff in leaf_parent_dist_diffs if diff < 0]
         # "on average how much shorter are shorter edges i.e. edges that the model made shorter than they actually are?"
-        dist_dict["mean_neg_diff"] = mean(neg_leaf_parent_dist_diffs)
-        dist_dict["median_neg_diff"] = median(neg_leaf_parent_dist_diffs)
+        dist_dict["mean_neg_diff"] = round(mean(neg_leaf_parent_dist_diffs),4)
+        dist_dict["median_neg_diff"] = round(median(neg_leaf_parent_dist_diffs),4) # TODO positive number?
         # calculate mean diff over positive values i.e. generated edge is shorter than original one
         pos_leaf_parent_dist_diffs = [diff for diff in leaf_parent_dist_diffs if diff > 0]
-        dist_dict["mean_pos_diff"] = mean(pos_leaf_parent_dist_diffs)
-        dist_dict["median_pos_diff"] = median(pos_leaf_parent_dist_diffs)
+        dist_dict["mean_pos_diff"] = round(mean(pos_leaf_parent_dist_diffs),4)
+        dist_dict["median_pos_diff"] = round(median(pos_leaf_parent_dist_diffs),4)
         # list for pairwise distances
         abs_pairwise_distances = []
-        generated_taxa = ut.get_taxa(generated_tree)
+        generated_taxa = ut.get_taxa(generated_tree.write())
         # get all leaf to leaf distances and calculate difference to corresponding distance in generated tree
-        for orig_leaf1, orig_leaf2 in combinations(orig_leaf_nodes):
+        for orig_leaf1, orig_leaf2 in combinations(orig_leaf_nodes, 2):
             ############# DEBUGGING
-            console_logger.info(f"leaf 1: {orig_leaf1}, leaf 2: {orig_leaf2}")
+            # console_logger.info(f"leaf 1: {orig_leaf1}, leaf 2: {orig_leaf2}")
             # get distance between both leaves in the original tree
             orig_dist = original_tree.get_distance(orig_leaf1, orig_leaf2)
             # get distance between both leaves in the generated tree
@@ -392,10 +413,10 @@ class Comparison_Job():
                 generated_dist = 0
             abs_pairwise_distance = abs(orig_dist-generated_dist)
             ####### DEBUGGING
-            console_logger.info(f"distance: {abs_pairwise_distance}")
+            # console_logger.info(f"distance: {abs_pairwise_distance}")
             abs_pairwise_distances.append(abs_pairwise_distance)
-        dist_dict["mean_pairwise_diff"] = mean(abs_pairwise_distances)
-        dist_dict["median_pairwise_diff"] = median(abs_pairwise_distances)
+        dist_dict["mean_pairwise_diff"] = round(mean(abs_pairwise_distances),4)
+        dist_dict["median_pairwise_diff"] = round(median(abs_pairwise_distances),4)
         return dist_dict
 
 def main():
