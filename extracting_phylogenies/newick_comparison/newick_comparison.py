@@ -382,41 +382,31 @@ class Comparison_Job():
                 # if the leaf doesnt exist in the generated tree then append the maximum difference
                 leaf_parent_dist_diffs.append(orig_leaf.dist) 
         # calculate mean and median over absolute differences
-        console_logger.info(leaf_parent_dist_diffs)
+        # console_logger.info(leaf_parent_dist_diffs)
         abs_leaf_parent_dist_diffs = list(map(abs,leaf_parent_dist_diffs))
-        console_logger.info(abs_leaf_parent_dist_diffs)
+        # console_logger.info(abs_leaf_parent_dist_diffs)
         dist_dict["mean_abs_diff"] = round(mean(abs_leaf_parent_dist_diffs),4)
         dist_dict["median_abs_diff"] = round(median(abs_leaf_parent_dist_diffs),4)
         # calculate mean diff over negative values i.e. generated edge is longer than original one
         neg_leaf_parent_dist_diffs = [diff for diff in leaf_parent_dist_diffs if diff < 0]
         # "on average how much shorter are shorter edges i.e. edges that the model made shorter than they actually are?"
         dist_dict["mean_neg_diff"] = round(mean(neg_leaf_parent_dist_diffs),4)
-        dist_dict["median_neg_diff"] = round(median(neg_leaf_parent_dist_diffs),4) # TODO positive number?
+        dist_dict["median_neg_diff"] = round(median(neg_leaf_parent_dist_diffs),4) 
         # calculate mean diff over positive values i.e. generated edge is shorter than original one
         pos_leaf_parent_dist_diffs = [diff for diff in leaf_parent_dist_diffs if diff > 0]
         dist_dict["mean_pos_diff"] = round(mean(pos_leaf_parent_dist_diffs),4)
         dist_dict["median_pos_diff"] = round(median(pos_leaf_parent_dist_diffs),4)
         # list for pairwise distances
-        abs_pairwise_distances = []
-        generated_taxa = ut.get_taxa(generated_tree.write())
-        # get all leaf to leaf distances and calculate difference to corresponding distance in generated tree
-        for orig_leaf1, orig_leaf2 in combinations(orig_leaf_nodes, 2):
-            ############# DEBUGGING
-            # console_logger.info(f"leaf 1: {orig_leaf1}, leaf 2: {orig_leaf2}")
-            # get distance between both leaves in the original tree
-            orig_dist = original_tree.get_distance(orig_leaf1, orig_leaf2)
-            # get distance between both leaves in the generated tree
-            if orig_leaf1 in generated_taxa and orig_leaf2 in generated_taxa:
-                generated_dist = generated_tree.get_distance(orig_leaf1, orig_leaf2)
-            else:
-                # if the pair doesnt exist in the generated tree then let the difference be the maximum distance possible
-                generated_dist = 0
-            abs_pairwise_distance = abs(orig_dist-generated_dist)
-            ####### DEBUGGING
-            # console_logger.info(f"distance: {abs_pairwise_distance}")
-            abs_pairwise_distances.append(abs_pairwise_distance)
-        dist_dict["mean_pairwise_diff"] = round(mean(abs_pairwise_distances),4)
-        dist_dict["median_pairwise_diff"] = round(median(abs_pairwise_distances),4)
+        abs_pairwise_dist_diffs = []
+        # get all common leaves
+        common_leaves = set(original_tree.get_leaf_names()) & set(generated_tree.get_leaf_names())
+        # iterate over common leaf pairs and get the absolute difference in pairwise distances
+        for leaf1, leaf2 in combinations(common_leaves, 2):
+            original_dist = original_tree.get_distance(leaf1, leaf2)
+            generated_dist = generated_tree.get_distance(leaf1, leaf2)
+            abs_pairwise_dist_diffs.append(abs(original_dist-generated_dist))
+        dist_dict["mean_pairwise_diff"] = round(mean(abs_pairwise_dist_diffs),4)
+        dist_dict["median_pairwise_diff"] = round(median(abs_pairwise_dist_diffs),4)
         return dist_dict
 
 def main():
