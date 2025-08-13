@@ -94,12 +94,12 @@ class TreeRender:
         package,
         file_id = None,
         outdir_path = None, # Path to the directory where output directory is created at
-        dont_display_lengths= False, 
+        display_lengths= True, 
         circular_tree = False, 
         right_to_left_orientation = False, # if False then default orientation left to right is applied
-        dont_allow_multifurcations = True,
+        allow_multifurcations = True,
         branch_vertical_margin = 10, # number of pixels between adjacent branches
-        taxa_only = False, # equivalent to removing distances in newick + dont_display_lengths = True
+        taxa_only = False, 
         topology_only = False,
         align_taxa = False,
         ):
@@ -111,10 +111,10 @@ class TreeRender:
         self.package = package
         self.file_id = file_id
         self.outdir_path = outdir_path
-        self.dont_display_lengths = dont_display_lengths
+        self.display_lengths = display_lengths
         self.circular_tree = circular_tree
         self.right_to_left_orientation = right_to_left_orientation
-        self.dont_allow_multifurcations = dont_allow_multifurcations
+        self.allow_multifurcations = allow_multifurcations
         self.branch_vertical_margin = branch_vertical_margin
         self.fontsize = fontsize
         self.linewidth = linewidth
@@ -122,28 +122,11 @@ class TreeRender:
         self.topology_only = topology_only
         self.align_taxa = align_taxa
     
-    def is_multifurcating(self):
-        """
-        Checks if the newick of a treerender object contains a multifurcation
-
-        Returns:
-            bool: True if the newick contains a multifurcation
-        """
-        return self.is_multifurcating_worker(Tree(self.newick))
-    
-    def is_multifurcating_worker(self, newick_tree):
-        if len(newick_tree.get_children()) > 2:
-            return True
-        for node in newick_tree.get_children():
-            if self.is_multifurcating_worker(node):
-                return True
-        return False   
-    
     def solve_multifurcations(self):
         """
         Solves multifurcations in the newick and the tree object using ete3's resolve_polytomy function
         """
-        if not self.is_multifurcating:
+        if not ut.is_multifurcating(Tree(self.newick)):
             return
         newick_tree = Tree(self.newick)
         newick_tree.resolve_polytomy(recursive=True)    
@@ -161,13 +144,12 @@ class TreeRender:
         """
         Given a newick tree as a string, generates an image of the newick tree and saves it to the specified path. 
         If no path is specified it will instead save the image to the current directory. 
-        If no file name is provided the image in the current directory will be called "{package}_tree_{id}.jpg".
         If the path contains directories that dont exist, they will be created. If no valid file extension is used, 
         the image will be a .jpg.
         """
         if not self.package in ["phylo", "ete3"]:
             console_logger.warning(f"Package {self.package} not valid.")
-        elif self.package == "phylo":
+        if self.package == "phylo":
             self.save_newick_image_phylo(outfile_path)
         elif self.package == "ete3":
             self.save_newick_image_ete3(outfile_path)
@@ -179,6 +161,10 @@ class TreeRender:
         Args:
             outfile_path (str): path where the image is saved at 
         """
+        # solve multifurcations if they aren't allowed and update the newick if there is a multifurcation
+        if self.allow_multifurcations == False and ut.is_multifurcating(Tree(self.newick)):
+            self.solve_multifurcations()
+            console_logger.info(f"Solved multifurcation(s).")
         newick_format = 100 if self.topology_only else 0
         # check if the newick has correct formatting 
         if not ut.is_newick(self.newick, format=newick_format):
@@ -214,20 +200,23 @@ class TreeRender:
         # remove taxa from newick if topology_only
         if self.topology_only:
             self.newick = ut.remove_taxa_from_newick(self.newick)
-        if self.dont_display_lengths or self.taxa_only or self.topology_only:
+        if (not self.display_lengths) or self.taxa_only or self.topology_only:
             Phylo.draw(newick_tree, axes=axes, do_show=False, branch_labels=lambda c: None)
         else: 
             Phylo.draw(newick_tree, axes=axes, do_show=False, branch_labels=lambda c: c.branch_length)
         ###### DEBUGGING
         # plt.show() # show the tree instead of writing a file each time
-        if not os.path.exists(os.path.dirname(outfile_path)):
-            os.makedirs(os.path.dirname(outfile_path), exist_ok=True)
-            plt.savefig(outfile_path, bbox_inches='tight') 
-            console_logger.info(f"Image was saved to newly created directory.")
-        else: 
-            plt.savefig(outfile_path, bbox_inches='tight')
-            console_logger.info(f"Image was saved to specified directory.")
+        # if not os.path.exists(os.path.dirname(outfile_path)):
+        #     os.makedirs(os.path.dirname(outfile_path), exist_ok=True)
+        #     plt.savefig(outfile_path, bbox_inches='tight') 
+        #     console_logger.info(f"Image was saved to newly created directory.")
+        # else: 
+        #     plt.savefig(outfile_path, bbox_inches='tight')
+        #     console_logger.info(f"Image was saved to specified directory.")
+        os.makedirs(os.path.dirname(outfile_path), exist_ok=True)
+        plt.savefig(outfile_path, bbox_inches='tight')
         plt.close()
+        console_logger.info(f"Image was saved to data directory.")
         
     def save_newick_image_ete3(self, outfile_path):
         """
@@ -237,7 +226,7 @@ class TreeRender:
             outfile_path (str): path where the image is saved at
         """
         # solve multifurcations if they aren't allowed and update the newick if there is a multifurcation
-        if self.dont_allow_multifurcations == True and self.is_multifurcating():
+        if self.allow_multifurcations == False and ut.is_multifurcating(Tree(self.newick)):
             self.solve_multifurcations()
             console_logger.info(f"Solved multifurcation(s).")
         # create ete3 Tree object of the finished newick, all further modifications are taken on the Tree object not the
@@ -267,8 +256,8 @@ class TreeRender:
                         faces.add_face_to_node(taxa_face, node, column=0, position="aligned")
                     else:
                         faces.add_face_to_node(taxa_face, node, column=0)
-            # if dont_display_lengths, taxa_only or topology_only are True, then dont create faces for distances
-            if not (self.dont_display_lengths or self.taxa_only or self.topology_only):
+            # if display_lengths is True and taxa_only and topology_only are False, then create faces for distances
+            if self.display_lengths and not self.taxa_only and not self.topology_only:
                 if not node.is_root():
                     # create face for the distance 
                     dist_face = faces.AttrFace(f"dist", fsize=fontsize)
@@ -299,15 +288,13 @@ class TreeRender:
         if self.topology_only or self.taxa_only:
             treestyle.show_scale = False
         # add dotted lines that ete3 adds to edges when edge is too short for branch length label
-        treestyle.complete_branch_lines_when_necessary = True 
+        treestyle.complete_branch_lines_when_necessary = True # does not work well for internal nodes
         ###### DEBUGGING
         # newick_tree.show(tree_style=treestyle) # show the tree instead of writing a file each time
         # save the rendered image to file
-        if not os.path.exists(os.path.dirname(outfile_path)):
-            os.makedirs(os.path.dirname(outfile_path), exist_ok=True)
-            newick_tree.render(file_name=outfile_path, tree_style=treestyle)
-        else: 
-            newick_tree.render(file_name=outfile_path, tree_style=treestyle)
+        os.makedirs(os.path.dirname(outfile_path), exist_ok=True)
+        newick_tree.render(file_name=outfile_path, tree_style=treestyle)
+        console_logger.info(f"Image was saved to data directory.")
             
     def write_params_to_tsv(self, outfile_path):
         """
@@ -315,13 +302,13 @@ class TreeRender:
         AI on different parameters.
         This is done for each image seperately.
         """
-        tsv_header = "random_distances\tmax_distance\tamount_taxa\tpackage\tbranch_lengths\tcircular_tree\t"
-        tsv_header += "right_to_left_orientation\tmultifurcations\tbranch_vertical_margin[px]\t"
+        tsv_header = "random_distances\tmax_distance\tamount_taxa\tpackage\tbranch_lengths_displayed\tcircular_tree\t"
+        tsv_header += "right_to_left_orientation\tmultifurcations_allowed\tbranch_vertical_margin[px]\t"
         tsv_header += "fontsize\tlinewidth[px]\ttaxa_only\ttopo_only\talign_taxa\t"
         tsv_header += "\n"
         params = f"{self.randomize_distances}\t{self.max_distance}\t{self.amount_taxa}\t"
-        params += f"{self.package}\t{not self.dont_display_lengths}\t{self.circular_tree}\t"
-        params += f"{self.right_to_left_orientation}\t{not self.dont_allow_multifurcations}\t"
+        params += f"{self.package}\t{self.display_lengths}\t{self.circular_tree}\t"
+        params += f"{self.right_to_left_orientation}\t{self.allow_multifurcations}\t"
         params += f"{self.branch_vertical_margin}\t{self.fontsize}\t{self.linewidth}\t{self.taxa_only}\t"
         params += f"{self.topology_only}\t{self.align_taxa}\t" 
         with open(outfile_path, "w") as tsv_file:
@@ -336,16 +323,16 @@ class TreeRender:
         if self.outdir_path:
             if not os.path.exists(self.outdir_path):
                 os.makedirs(self.outdir_path)
-                console_logger.info(f"create_output_directory: Specified directory was created")
-            image_path = self.outdir_path + f"\\data{self.file_id}\\tree{self.file_id}.jpg"
-            newick_path = self.outdir_path + f"\\data{self.file_id}\\newick{self.file_id}.nwk"
-            tsv_path = self.outdir_path + f"\\data{self.file_id}\\params{self.file_id}.tsv"
+                console_logger.info("Data directory was created")
+            image_path = os.path.join(self.outdir_path,f"data{self.file_id}",f"tree{self.file_id}.jpg")
+            newick_path = os.path.join(self.outdir_path,f"data{self.file_id}",f"newick{self.file_id}.nwk")
+            tsv_path = os.path.join(self.outdir_path,f"data{self.file_id}",f"params{self.file_id}.tsv")
             console_logger.info(f"Image is saved to specified directory.")
         else:
-            path = str(pathlib.Path(__file__).parent.resolve()) + f"\\data{self.file_id}\\"
-            image_path = path + f"tree{self.file_id}.jpg"
-            newick_path = path + f"newick{self.file_id}.nwk"
-            tsv_path = path + f"params{self.file_id}.tsv"
+            path = os.path.join(str(pathlib.Path(__file__).parent.resolve()),f"data{self.file_id}")
+            image_path = os.path.join(path,f"tree{self.file_id}.jpg")
+            newick_path = os.path.join(path,f"newick{self.file_id}.nwk")
+            tsv_path = os.path.join(path,f"params{self.file_id}.tsv")
             console_logger.info(f"Image is saved to generated_data directory in working directory.")
         # remove taxa before removing distances and saving the image 
         if self.package == "phylo" and self.topology_only:
@@ -370,8 +357,8 @@ class TreeRender:
     def randomize_treerender(self, excluded_params):
         """
         When applied to a TreeRender object, randomizes the following parameters:
-        package, amount_taxa, randomize_distances, max_distance, dont_allow_multifurcations, branch_vertical_margin,
-        fontsize, linewidth
+        package, amount_taxa, randomize_distances, max_distance, allow_multifurcations, branch_vertical_margin,
+        fontsize, linewidth, display_lengths, align_taxa
         This way a user that does not want to understand all parameters can create a simple but 
         diverse dataset quickly.
 
@@ -381,36 +368,36 @@ class TreeRender:
         """
         if "package" not in excluded_params:
             self.package = random.choice(["ete3","phylo"])
-        if "dont_display_lengths" not in excluded_params:
-            self.dont_display_lengths = random.choice([True,False])
+        if "display_lengths" not in excluded_params:
+            self.display_lengths = random.choice([True,False])
+        if "allow_multifurcations" not in excluded_params:
+            self.allow_multifurcations = random.choice([True,False])
         if self.package == "ete3":
-            if "dont_allow_multifurcations" not in excluded_params:
-                self.dont_allow_multifurcations = random.choice([True,False])
             if "branch_vertical_margin" not in excluded_params:
                 self.branch_vertical_margin = random.randint(10, 100)
-            if "fontize" not in excluded_params:
-                self.fontsize = random.randint(8,20)
+            if "fontsize" not in excluded_params:
+                self.fontsize = random.randint(8,20) # fontsize ete3 range: [8, 20]
             if "linewidth" not in excluded_params: 
-                self.linewidth = random.randint(1,15)
+                self.linewidth = random.randint(1,10)
             if "align_taxa" not in excluded_params:
                 self.align_taxa = random.choice([True,False])
         if self.package == "phylo":
             if "fontsize" not in excluded_params:
-                self.fontsize = random.randint(12,20)
+                self.fontsize = random.randint(16,20) # fontsize phylo range: [16, 20]
             if "linewidth" not in excluded_params:
                 # increase linewidth only if no edge labels are present
-                if self.topology_only or self.taxa_only or self.dont_display_lengths:
-                    self.linewidth = random.randint(1,15)
+                if self.topology_only or self.taxa_only or (not self.display_lengths):
+                    self.linewidth = random.randint(1,10)
                 else: 
                     # in phylo branch lengths arent legible if linewidth is increased
                     self.linewidth = 1 
         if "amount_taxa" not in excluded_params:
-            self.amount_taxa = random.randint(5,20) # range: [5, 20]
+            self.amount_taxa = random.randint(3,25) # taxa range: [3, 25]
         if "randomize_distances" not in excluded_params:
             self.randomize_distances = random.choice([True,False])
         if "max_distance" not in excluded_params:
             if self.randomize_distances:
-                self.max_distance = random.randint(1, 10)
+                self.max_distance = random.randint(1, 10) # max distance range: [1, 10]
         ##### DEBUGGING
         # return self
     
@@ -455,8 +442,8 @@ def main():
         default=False,
         help="""On/Off flag. Randomizes the following parameters and flags within reasonable ranges if they haven't
         been specified: 
-        package, amount_taxa, randomize_distances, max_distance, dont_allow_multifurcations, branch_vertical_margin, 
-        fontsize, linewidth, dont_display_lengths, align_taxa. If --create_rand_tree and e.g. package are specified
+        package, amount_taxa, randomize_distances, max_distance, allow_multifurcations, branch_vertical_margin, 
+        fontsize, linewidth, display_lengths, align_taxa. If --create_rand_tree and e.g. package are specified
         then package won't be randomized. Quickly create a diverse dataset instead of one type of image by 
         specifying --create_rand_tree in combination with --number_directories. --topology_only removes distances 
         and taxa from the newick and the image of each directory created with --create_rand_tree. --taxa_only
@@ -505,31 +492,33 @@ def main():
                                     Choose between Bio.Phylo and ETE3 Toolkit. Default: ete3.""")
     argument_parser.add_argument('-a', '--amount_taxa', required=False, type=int,
                                     help='Type=Int. Choose the preferred amount of generated taxa. Default: 10.')
-    argument_parser.add_argument('-rd', '--randomize_distances', required=False, action="store_true", 
-                                    help="""On/Off flag. If specified the distances (branch lengths) will be 
-                                    randomized. Default: False.""")
+    argument_parser.add_argument('-rd', '--randomize_distances', required=False, type=str, 
+                                    help="""If true: specified the distances (branch lengths) will be 
+                                    randomized. If false: branch lengths won't be randomized. Default: False.""")
     argument_parser.add_argument('-md', '--max_distance', required=False, type=int, 
-                                    help="""Type=Int. If distances are randomized this will be the maximum distance. 
-                                    Default: 1.""")
-    argument_parser.add_argument("-db", "--dont_display_lengths", required=False, action="store_true", 
-                                    help="""On/Off flag. If specified then no branch lengths will be displayed in the 
-                                    image. Distances are still going to be present in the newick. 
-                                    Default: False.""")
+                                    help="""Type=Int. If --randomize_distances is specified, --max_distance will be the 
+                                    upper limit of randomized distances. Default: 10.0.""")
+    argument_parser.add_argument("-db", "--display_lengths", required=False, type=str, 
+                                    help="""True: Branch lengths will be displayed in the 
+                                    image as branch labels. False: Branch lengths won't be displayed as branch labels 
+                                    but branches will still keep their length. 
+                                    Default: True.""")
     argument_parser.add_argument("-c", "--circular_tree", required=False, action="store_true", default=False,
                                     help="""On/Off flag. ETE3 only. If True the tree in the image will be in 
                                     circular format. Default: False.""")
     argument_parser.add_argument("-rl", "--right_to_left_orientation", required=False, action="store_true", 
                                     default=False,help="""On/Off flag. ETE only. Specify if tree is oriented from 
                                     right to left (taxa on the left). Default: False (left to right orientation)""")
-    argument_parser.add_argument("-da", "--dont_allow_multifurcations", required=False, action="store_true", 
-                                    help="""On/Off flag. ETE3 only. If specified then the resulting 
-                                    tree will be binary. Default: False.""")
+    argument_parser.add_argument("-da", "--allow_multifurcations", required=False, type=str, 
+                                    help="""If true: Tree won't necessarily binary. If false: Tree will be strictly 
+                                    binary. Default: True.""")
     argument_parser.add_argument("-vm", "--branch_vertical_margin", required=False, type=int, 
                                     help="""ETE3 only. Amount of pixels between two adjacent branches. 
                                     Should not be smaller than 5. Default: 10 pixels.""")
-    argument_parser.add_argument("-at", "--align_taxa", required=False, action="store_true", 
-                                    help="""On/Off flag. ETE3 only. If specified taxa are aligned to the right instead 
-                                    of written at the leaf node. Default: False.""")
+    argument_parser.add_argument("-at", "--align_taxa", required=False, type=str, 
+                                    help="""ETE3 only. If true: taxa are aligned to the right instead 
+                                    of written at the leaf node. If false: taxa aren't aligned and instead written next
+                                    to the corresponding leaf node. Used for creating cladograms. Default: False.""")
     argument_parser.add_argument("--quiet", required=False, action="store_true", default=False,
                                     help="""On/Off flag. If --quiet is specified all console logs will be disabled and 
                                     only the output printed out. This is useful inside a pipeline where the newick is 
@@ -539,13 +528,13 @@ def main():
     # if the amount of taxa is not specified it defaults to 10 taxa
     number_directories = args.number_directories
     amount_taxa = args.amount_taxa
-    randomize_distances = args.randomize_distances
+    randomize_distances = ut.get_bool_from_string(rd) if (rd:=args.randomize_distances) else None
     max_distance = args.max_distance
-    dont_display_lengths= args.dont_display_lengths
+    display_lengths= ut.get_bool_from_string(dl) if (dl:=args.display_lengths) else None
     outdir_path = args.outdir_path
     package = args.package
     circular_tree = args.circular_tree
-    dont_allow_multifurcations = args.dont_allow_multifurcations
+    allow_multifurcations = ut.get_bool_from_string(am) if (am:=args.allow_multifurcations) else None
     right_to_left_orientation = args.right_to_left_orientation 
     branch_vertical_margin = args.branch_vertical_margin
     create_rand_tree = args.create_rand_tree
@@ -605,18 +594,18 @@ def main():
     else: 
         used_parameters.append("amount_taxa")
     if not max_distance:
-        max_distance = 1.0
+        max_distance = 10.0
     else: 
         used_parameters.append("max_distance")
-    if not dont_display_lengths:
-        dont_display_lengths = False
+    if display_lengths == None:
+        display_lengths = True
     else: 
-        used_parameters.append("dont_display_lengths")
-    if not dont_allow_multifurcations:
-        dont_allow_multifurcations = False
+        used_parameters.append("display_lengths")
+    if allow_multifurcations == None:
+        allow_multifurcations = True
     else: 
-        used_parameters.append("dont_allow_multifurcations")
-    if not randomize_distances:
+        used_parameters.append("allow_multifurcations")
+    if randomize_distances == None:
         randomize_distances = False
     else: 
         used_parameters.append("randomize_distances")
@@ -633,7 +622,6 @@ def main():
     # warn user if they use ete3 parameters with a module other than ete3
     if (not package == "ete3") and (
         branch_vertical_margin or 
-        dont_allow_multifurcations or 
         circular_tree or 
         right_to_left_orientation
     ):
@@ -642,9 +630,6 @@ def main():
         if branch_vertical_margin:
             param_warning += "branch_vertical\n"
             branch_vertical_margin = None
-        if dont_allow_multifurcations:
-            param_warning += "dont_allow_multifurcations\n" 
-            dont_allow_multifurcations = False 
         if circular_tree:
             param_warning += "circular_tree\n"
             circular_tree = False
@@ -677,10 +662,10 @@ def main():
             outdir_path=outdir_path,
             file_id=file_id,
             package=package,
-            dont_display_lengths=dont_display_lengths,
+            display_lengths=display_lengths,
             circular_tree=circular_tree,
             right_to_left_orientation=right_to_left_orientation,
-            dont_allow_multifurcations=dont_allow_multifurcations,
+            allow_multifurcations=allow_multifurcations,
             branch_vertical_margin=branch_vertical_margin,
             fontsize=fontsize,
             linewidth=linewidth,
@@ -706,14 +691,14 @@ def main():
         Taxa only: {tree_render.taxa_only}
         Topology only: {tree_render.topology_only}
         Randomize distances: {tree_render.randomize_distances}
-        {"Max distance: "+{tree_render.max_distance} if tree_render.randomize_distances else "Distances: all exactly 1"}
+        Max distance: {tree_render.max_distance} 
         Amount of taxa: {tree_render.amount_taxa}
         Circular tree: {tree_render.circular_tree}
         Used package: {tree_render.package}
         Orientation: {"left to right" if not tree_render.right_to_left_orientation else "right to left"}
-        Don't allow multifurcations: {tree_render.dont_allow_multifurcations}
+        Allow multifurcations: {tree_render.allow_multifurcations}
         Vertical margin for adjacent branches: {tree_render.branch_vertical_margin if tree_render.package == "ete3" else None}
-        Branch lengths displayed: {not tree_render.dont_display_lengths}
+        Branch lengths displayed: {tree_render.display_lengths}
         Taxa aligned: {tree_render.align_taxa}
         """
         console_logger.info(iteration_info)
