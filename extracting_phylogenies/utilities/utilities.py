@@ -238,3 +238,11 @@ def count_multifurcations(newick):
             count += count_multifurcations_worker(child) 
         return count
     return count_multifurcations_worker(Tree(newick))
+
+def get_bool_from_string(string):
+    if string.lower() in ["true", "1"]:
+        return True
+    elif string.lower() in ["false", "0"]:
+        return False
+    else:
+        raise ValueError(f"Expected bool but {string}")
