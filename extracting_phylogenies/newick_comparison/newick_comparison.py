@@ -8,7 +8,6 @@ from ete3 import Tree # turn newick into tree structure
 import os # for checking outfile paths of the tsv
 import sys
 import logging
-from extracting_phylogenies.utilities import utilities as ut
 from itertools import combinations
 from statistics import mean, median
 
@@ -363,28 +362,18 @@ class Comparison_Job():
         generated_tree = Tree(generated)
         # save every leaf-parent distance difference
         leaf_parent_dist_diffs = []
-        # get original leaf nodes
-        orig_leaf_nodes = [node for node in original_tree.traverse() if node.is_leaf()]
-        # create dict with names of generated nodes and their nodes for fast access
-        generated_leaf_nodes = dict()
-        for node in generated_tree.traverse():
-            if node.is_leaf():
-                generated_leaf_nodes[node.name] = node 
-        # iterate over leaf nodes and compute the difference of original leaf branch length and generated one
-        for orig_leaf in orig_leaf_nodes:
-            ########## DEBUGGING
-            # console_logger.info(orig_leaf)
-            # console_logger.info(orig_leaf.dist)
+        # get all common leaves
+        common_leaves = set(original_tree.get_leaf_names()) & set(generated_tree.get_leaf_names())
+        # iterate over common leaf nodes and compute the difference of original leaf branch length and generated one
+        for leaf in common_leaves:
+            # original leaf
+            orig_leaf = original_tree.search_nodes(name=leaf.name)
+            # generated leaf
+            gen_leaf = generated_tree.search_nodes(name=leaf.name)
             # check if generated newick contains the current leaf
-            if generated_leaf_nodes[orig_leaf.name]:
-                leaf_parent_dist_diffs.append(orig_leaf.dist - generated_leaf_nodes[orig_leaf.name].dist) 
-            else:
-                # if the leaf doesnt exist in the generated tree then append the maximum difference
-                leaf_parent_dist_diffs.append(orig_leaf.dist) 
+            leaf_parent_dist_diffs.append(orig_leaf.dist - gen_leaf.dist) 
         # calculate mean and median over absolute differences
-        # console_logger.info(leaf_parent_dist_diffs)
         abs_leaf_parent_dist_diffs = list(map(abs,leaf_parent_dist_diffs))
-        # console_logger.info(abs_leaf_parent_dist_diffs)
         dist_dict["mean_abs_diff"] = round(mean(abs_leaf_parent_dist_diffs),4)
         dist_dict["median_abs_diff"] = round(median(abs_leaf_parent_dist_diffs),4)
         # calculate mean diff over negative values i.e. generated edge is longer than original one
@@ -398,8 +387,6 @@ class Comparison_Job():
         dist_dict["median_pos_diff"] = round(median(pos_leaf_parent_dist_diffs),4)
         # list for pairwise distances
         abs_pairwise_dist_diffs = []
-        # get all common leaves
-        common_leaves = set(original_tree.get_leaf_names()) & set(generated_tree.get_leaf_names())
         # iterate over common leaf pairs and get the absolute difference in pairwise distances
         for leaf1, leaf2 in combinations(common_leaves, 2):
             original_dist = original_tree.get_distance(leaf1, leaf2)
@@ -495,12 +482,12 @@ def main():
     )
     if outfile_path:
         if os.path.isdir(outfile_path):
-            raise IsADirectoryError("--outfile: Expected filepath but got directory path.")
+            raise IsADirectoryError(f"--outfile: Expected filepath but got directory path: {outfile_path}")
     if params_path:
         if not os.path.exists(params_path):
-            raise FileNotFoundError("--info: File does not exist")
+            raise FileNotFoundError(f"--params: File does not exist: {params_path}")
         elif os.path.isdir(params_path):
-            raise IsADirectoryError("--info: Expected filepath but got directory path.")
+            raise IsADirectoryError(f"--params: Expected filepath but got directory path: {params_path}")
     ########## CREATE OUTPUT ##########
     # get the info of the passed tsv
     info_header = None
