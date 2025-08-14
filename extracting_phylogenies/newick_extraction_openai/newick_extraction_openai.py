@@ -9,6 +9,7 @@ from argparse import RawTextHelpFormatter
 from ete3 import Tree
 from extracting_phylogenies.utilities import utilities as ut
 import logging
+from extracting_phylogenies.newick_extraction_openai import instructions as instr
 
 # create logger
 console_logger = logging.getLogger(__name__)
@@ -28,9 +29,9 @@ def get_image_from_directory(dir_path):
     """
     image_path = ""
     if not os.path.exists(dir_path):
-        exit(f"[{ut.get_time()}] Error in get_image_from_directory: Path does not exist.") 
+        raise FileNotFoundError(f"No such file or directory: {dir_path}") 
     elif not os.path.isdir(dir_path):
-        exit(f"[{ut.get_time()}] Error in get_image_from_directory: Path is not a directory.")
+        raise IsADirectoryError(f"Expected filepath but got directory path.")
     else:
         for image in os.listdir(dir_path):
             if image.endswith(".png") or image.endswith(".jpg") or image.endswith(".jpeg"):
@@ -39,7 +40,7 @@ def get_image_from_directory(dir_path):
     if image_path:
         return image_path
     else: 
-        exit("No image found in the specified directory.") 
+        raise ValueError(f"No image found: {dir_path}.") 
 
 # TODO: add to utilities class
 def get_file_id(dir_path):
@@ -82,7 +83,7 @@ class Newick_Extraction_Job:
         outfile_path = None,
         file_id = None,
         approach = "extract_nwk",
-        extract_taxa = False,
+        # get_taxa_first = False,
     ):
         self.infile_path = infile_path
         self.model = model
@@ -93,7 +94,7 @@ class Newick_Extraction_Job:
         self.outfile_path = outfile_path
         self.file_id = file_id
         self.approach = approach
-        self.extract_taxa = extract_taxa 
+        # self.get_taxa_first = get_taxa_first
         
     def write_extracted_newick_to_file(self):
         """
@@ -107,13 +108,14 @@ class Newick_Extraction_Job:
         """
         if self.outfile_path:
             app = "nwk_" if self.approach == "extract_nwk" else "topo_" if self.approach == "extract_topo" else ""
-            flag = "taxa_" if self.extract_taxa else ""
+            # flag = "taxa_" if self.get_taxa_first else ""
             # if outfile path points to dir save it in the dir, if it points to a file then create the file
             if os.path.isdir(self.outfile_path):
                 # create predictions directory for the extracted newick if it doesnt already exist in the specified dir
                 predictions_path = "predictions"
                 parent_path = self.outfile_path
-                newick_path = f"{self.model}_{app}{flag}{self.file_id}.nwk"
+                # newick_path = f"{self.model}_{app}{flag}{self.file_id}.nwk"
+                newick_path = f"{self.model}_{app}{self.file_id}.nwk"
                 os.makedirs(dir_path := os.path.join(parent_path, predictions_path), exist_ok=True)  
                 # # if the file already exists the current file content will be overwritten
                 with open(os.path.join(dir_path, newick_path), "w") as nwk_file:
@@ -129,10 +131,12 @@ class Newick_Extraction_Job:
                 )
         # if no outfile path was given, save the newick in the current working directory
         else:
-            if os.path.isfile(f".\\{self.model}_{app}{flag}{self.file_id}.nwk"):
+            # if os.path.isfile(f".\\{self.model}_{app}{flag}{self.file_id}.nwk"):
+            if os.path.isfile(f".\\{self.model}_{app}{self.file_id}.nwk"):
                 raise FileExistsError(f"[{ut.get_time()}] Error in write_newick_to_file: File already exists.") 
             else:
-                with open(f".\\{self.model}_{app}{flag}{self.file_id}.nwk", "w") as nwk_file:
+                # with open(f".\\{self.model}_{app}{flag}{self.file_id}.nwk", "w") as nwk_file:
+                with open(f".\\{self.model}_{app}{self.file_id}.nwk", "w") as nwk_file:
                     nwk_file.write(self.newick)
                     
     # TODO utilities class?
@@ -156,7 +160,7 @@ class Newick_Extraction_Job:
                 f"[{ut.get_time()}] Error in get_image_path(): Infile path {self.infile_path} does not exist."
             )
             
-    def extract_newick_directly(self):
+    def extract_newick_directly(self, instructions):
         """
         Given a path to an image (png, jpg or jpeg) and a OpenAI model returns the newick.
         "Directly" refers to the fact that the AI is not given the taxa in a first step and tasked with generating
@@ -170,45 +174,12 @@ class Newick_Extraction_Job:
         Returns:
             str: response text by the model
         """
-        if not self.model in ["gpt-4.1", "o4-mini", "gpt-4o"]:
-            raise ValueError(f"""[{ut.get_time()}] Error in generate_newick_from_image_directly: Given model is not 
-                             supported. Please choose from gpt-4.1, o4-mini or gpt-4o""")
+        if not self.model in ["gpt-4.1", "o4-mini", "gpt-4o", "gpt-5"]:
+            raise ValueError(f"""Error in generate_newick_from_image_directly: Given model is not 
+                             supported. Please choose from gpt-4.1, o4-mini, gpt-4o or gpt-5""")
         img_path = self.get_image_path()
-        prompt = """Give me the Newick format of this phylogenetic tree, preserving all taxa (if visible), all branch
-        lengths (if visible) and topology."""
-        instructions =  """You are given an image of a phylogenetic tree that may have multifurcations. You task is to 
-        output only the tree in valid Newick format. In case there are no branch lengths then infere the branch 
-        lengths from the scale bar.
-        
-        Guidelines:
-        - Reply with nothing but the newick, no explanation, no prefix, no suffix
-        - Dont put backticks around the newick 
-        - dont but new lines in the newick
-        - The Newick string must include the taxon names exactly as shown in the image
-        - The Newick string must correspond to the topology exactly as shown in the image
-        - The Newick string must include branch lengths exactly as shown in the image
-        - In case there is a scale bar but no branch lengths in the whole image then infere the branch lengths from the 
-        scale bar
-        - In case there are no branch lengths in the whole image and no scale bar then dont include branch lengths in 
-        the Newick string
-        - In case there are no branch lengths, no scale bar and no taxa in the whole tree then dont include branch 
-        lengths in the newick and put empty strings for taxon names e.g. ((,),(,(,)));
-        
-        Examples:
-        
-        Example with taxa and branch lengths: 
-        ((<taxon1>:<branch_length1>,<taxon2>:<branch_length2>):<branch_length4>,<taxon3>:<branch_length3>);
-        ((A:2.37,B:1.55):4.58,((C:1.43,D:3.63):0.27,E:1.66):4.07);
-        Example without branch lengths.
-        ((<taxon1>,<taxon2>),<taxon3>);
-        ((A,B),((C,D),E));
-        Example without branch lengths and taxa:
-        ((,),((,),));
-        Example with multifurcations:
-        ((A:4.24,B:2.21,C:9.11):3.31,(D:2.22,E:1.02):1.21,((F:4.26,G:6.66):5.01,H:1.32):3.21);
-        ((A,B,C),(D,E),((F,G),H));
-        ((,,),(,),((,),));
-        """
+        prompt = """Give me the Newick format of this phylogenetic tree."""
+        instructions =  instructions
         b64_image = encode_image(img_path)
         # conditionally include temperature and top_p in the create() functions args because o4-mini does not support it
         args = {
@@ -225,6 +196,7 @@ class Newick_Extraction_Job:
                 }
             ],
         }
+        # set temperature and top_p only for 4.1 and 4o because 5 and o4 dont support it
         if self.model == "gpt-4.1" or self.model == "gpt-4o":
             args["temperature"] = 0.0
             args["top_p"] = 0.0
@@ -296,12 +268,13 @@ class Newick_Extraction_Job:
                 current_parent.add_child(name=get_name(lines[i]), dist=get_dist(lines[i]))
         # remove support vals to not confuse postprocessing
         newick = ut.remove_support_vals(tree.write())
-        # remove placeholder distances from newick
-        newick = ut.remove_distances(newick)
+        # remove placeholder distances added by ete3 if image doesnt have distances
+        if self.taxa_only or self.topo_only:
+            newick = ut.remove_distances(newick)
         console_logger.info(f"Newick extracted from topology: {newick}")
         return newick
 
-    def extract_topology(self):
+    def extract_topology(self, instructions):
         """
         Given a path to an image (png, jpg or jpeg) and a OpenAI model returns the phylogenetic tree in hierarchical 
         text format for manual extraction. 
@@ -334,52 +307,12 @@ class Newick_Extraction_Job:
         Returns:
             str: response text by the model
         """
-        if not self.model in ["gpt-4.1", "o4-mini", "gpt-4o"]:
+        if not self.model in ["gpt-4.1", "o4-mini", "gpt-4o", "gpt-5"]:
             raise ValueError(f"""Error in generate_newick_from_image_directly: Given model is not supported. Please 
-                             choose from gpt-4.1, o4-mini or gpt-4o""")
+                             choose from gpt-4.1, o4-mini, gpt-4o or gpt-5""")
         img_path = self.get_image_path()
-        prompt = """Give me the topology, taxon names (if visible) and branch lengths (if visible) of this phylogenetic 
-        tree in hierarchical text format as if you created a Bio.Phylo Tree object and printed it."""
-        instructions =  """You are given an image of a phylogenetic tree. Your task is to output the topology, taxon 
-        names (if visible) and branch lengths (if visible) in a hierarchical text format similar to that of Bio.Phylo
-        when a Tree object is printed.
-        
-        Example with taxon names and branch lengths: 
-        Clade()
-            Clade(branch_length=3.54)
-                Clade(branch_length=3.42)
-                    Clade(branch_length=4.88, name='Crassulaceae')
-                    Clade(branch_length=3.53, name='Calycanthus_chinensis')
-                Clade(branch_length=1.8, name='Verruciconidia_persicina')
-            Clade(branch_length=3.27)
-                Clade(branch_length=0.42, name='Aquaspirillum_serpens')
-                Clade(branch_length=1.74, name='Wolbachia_pipientis')
-                
-        this corresponds to a tree like:
-        
-                                        _____________________ Crassulaceae
-                         ______________|
-          ______________|              |_______________ Calycanthus_chinensis
-         |              |
-        _|              |_______ Verruciconidia_persicina
-         |
-         |              _ Aquaspirillum_serpens
-         |_____________|
-                       |_______ Wolbachia_pipientis
-        
-        Guidelines:
-        - Reply with nothing but the topology, no explanation, no prefix, no suffix 
-        - Each indentation is 4 spaces
-        - Each indentation level corresponds to one clade deeper in the tree's hierarchy
-        - No indentation means it is the root
-        - One tab of indentation means that the clade or leaf is the child of the root
-        - Two tabs mean that the clade or leaf is the grandchild of the root and so on
-        - The topology string must include all taxon names and branch lengths
-        - In case there are no taxon names in the image then put empty strings in their place e.g. ..., name='')
-        - In case there are no branch lengths in the whole image then infere the branch lengths from the scale bar
-        - In case there are no branch lengths, no scale bar in the whole image then set all branch lengths to empty 
-        string e.g. Clade(branch_lengths=), Clade(branch_lengths=, name='taxon2')
-        """
+        prompt = """Give me the hierarchical text format corresponding to this phylogenetic if you created a Bio.Phylo Tree object and printed it."""
+        instructions =  instructions
         b64_image = encode_image(img_path)
         # conditionally include temperature and top_p in the create() functions args because o4-mini does not support it
         args = {
@@ -396,6 +329,7 @@ class Newick_Extraction_Job:
                 }
             ],
         }
+        # set temperature and top_p only for 4.1 and 4o because 5 and o4 dont support it
         if self.model == "gpt-4.1" or self.model == "gpt-4o":
             args["temperature"] = 0.0
             args["top_p"] = 0.0
@@ -473,11 +407,7 @@ class Newick_Extraction_Job:
                 return ";"
         
     def correct_newick(self, erroneous_newick):
-        """
-        Given a newick uses the model to correct the given erroneous newick and returns the corrected newick
-        
-        Args
-        """
+        # TODO add doc string
         b64_image = encode_image(self.get_image_path())
         prompt=f"""This is a phylogenetic tree and this the corresponding erroneous Newick: {erroneous_newick}. The 
         Newick might have spelling mistakes, missing taxa and wrong formatting. Give me the correct Newick."""
@@ -490,11 +420,12 @@ class Newick_Extraction_Job:
         
         Guidelines:
         - Reply with nothing but the newick, no explanation, no prefix, no suffix
+        - Dont add taxa and branch lengths
         - Dont put backticks around the newick and dont but new lines in the newick
         - Correct parentheses with respect to the topology of the phylogenetic tree in the given image 
+        - Make sure every closing parentheses is followed by a comma expect the last closing parentheses e.g. ");"
         - Make sure every opening parenthesis has a closing parenthesis 
         - Make sure there aren't any unnecessary parentheses
-        - If the newick doesn't contain branch lengths and/or taxa, this is not part of the error 
         """
         # conditionally include temperature and top_p in the create() functions args because o4-mini does not support it
         args = {
@@ -541,6 +472,27 @@ def main():
         help="""Specify which functionality you want to use. extract_nwk extracts the newick directly i.e the model 
         produces text in newick format itself. extract_topo extracts the topology of the image and then the newick
         is extracted algorithmically.""")
+    argument_parser.add_argument(
+        "-f",
+        "--format", 
+        choices=["taxa_only","topo_only","regular", "no_format"], 
+        required=False,
+        default="no_format",
+        help="""Option to specify what the model should extract from the image. Depending on the format chosen different
+        instructions are given to the model.
+        Specify which format the output newick has: 
+        taxa_only:
+        Output newick will only have taxa and no branch lengths e.g. ((A,B,C),(D,E),((F,G),H));
+        topo_only:
+        Output newick will have neither taxa nor branch lengths, only topology e.g. ((,,),(,),((,),));
+        regular:
+        Output newick will have taxa and branch lengths e.g. ((A:2.37,B:1.55):4.58,((C:1.43,D:3.63):0.27,E:1.66):4.07);
+        no_format:
+        Based on the information in the given image (taxa/no taxa, branch lengths/no branch lengths) the model decides 
+        on its own if the tree has taxa and branch lengths or not and responds with a newick with a corresponding 
+        format.
+        Default: no_format"""
+    )
     argument_parser.add_argument('-i', '--infile_path', required=True, type=str,
                                  help="""Path to a directory containing an image of a phylogenetic tree or path to the 
                                  image itself. Be aware that the first image in a specified directory will be 
@@ -549,11 +501,12 @@ def main():
                                  help="""Path where the newick is saved at. If the path points to a directory the 
                                  newick will be saved there inside a predictions directory. If no path is provided the 
                                  output is printed to console to allow for use in pipelines.""")
-    argument_parser.add_argument("-m", "--model", required=False, choices=["gpt-4o", "gpt-4.1", "o4-mini"], type=str, 
+    argument_parser.add_argument("-m", "--model", required=False, choices=["gpt-4o", "gpt-4.1", "o4-mini", "gpt-5"], 
+                                 type=str, 
                                  default="gpt-4.1",
                                  help="""Choose which OpenAI model is used in the generation of the newick string. 
                                  Choose from GPT-4o, GPT-4.1 or o4-mini. Default model used is GPT-4.1.""")
-    # argument_parser.add_argument("-t", "--extract_taxa", required=False, action="store_true", default=False,
+    # argument_parser.add_argument("-t", "--get_taxa_first", required=False, action="store_true", default=False,
     #                              help="""On/Off flag. If specified taxa will be extracted by the chosen model in a 
     #                              first step and then passed to the model together with the image.""")
     argument_parser.add_argument("--quiet", required=False, action="store_true", default=False,
@@ -568,7 +521,8 @@ def main():
     model = args.model 
     approach = args.approach
     quiet = args.quiet
-    # extract_taxa = args.extract_taxa
+    # get_taxa_first = args.get_taxa_first
+    format = args.format
     
     # file ID for the current job 
     file_id = ut.get_file_id()
@@ -582,7 +536,7 @@ def main():
         console_logger.setLevel(logging.WARNING)
     else:
         console_logger.setLevel(logging.INFO)
-    console_logger.info('Started')
+    console_logger.info('Starting newick_extraction_openai')
     console_logger.info(f"File ID: {file_id}")
     
     # create Newick_Extraction_Job object
@@ -592,11 +546,30 @@ def main():
         outfile_path=outfile_path,
         file_id = file_id,
         approach=approach,
+        
     )
+    
+    # decide which instructions to use
+    if approach == "extract_nwk" and format == "regular":
+        instructions = instr.instr_nwk_regular
+    elif approach == "extract_nwk" and format == "taxa_only":
+        instructions = instr.instr_nwk_taxa_only
+    elif approach == "extract_nwk" and format == "topo_only":
+        instructions = instr.instr_nwk_topo_only
+    elif approach == "extract_nwk" and format == "no_format":
+        instructions = instr.instr_nwk_all_cases
+    elif approach == "extract_topo" and format == "regular":
+        instructions = instr.instr_topo_regular
+    elif approach == "extract_topo" and format == "taxa_only":
+        instructions = instr.instr_topo_taxa_only
+    elif approach == "extract_topo" and format == "topo_only":
+        instructions = instr.instr_topo_topo_only
+    else:
+        raise ValueError("No instructions implemented for chosen combination of approach and format.")
         
     if approach == "extract_nwk":
-        # extract newick
-        newick = extraction_job.extract_newick_directly()
+        # extract newick directly
+        newick = extraction_job.extract_newick_directly(instructions=instructions)
         # set the postprocessed newick as the job objects newick
         extraction_job.newick = extraction_job.postprocess_newick(newick)
         if extraction_job.outfile_path:
@@ -605,7 +578,7 @@ def main():
             print(extraction_job.newick) 
     elif approach == "extract_topo":
         # extract topology
-        extraction_job.topology = extraction_job.extract_topology() 
+        extraction_job.topology = extraction_job.extract_topology(instructions=instructions) 
         # extract newick from topology
         newick = extraction_job.extract_newick_from_topology()
         # set the postprocessed newick as the job objects newick
@@ -615,10 +588,8 @@ def main():
             extraction_job.write_extracted_newick_to_file()
         else:
             print(extraction_job.newick)
-    else:
-        raise ValueError(f"[{ut.get_time()}] Approach {approach} not valid.")
     
-    console_logger.info('Finished')
+    console_logger.info('Finished newick_extraction_openai')
             
 # execute the main method
 if __name__ == "__main__":
