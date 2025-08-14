@@ -56,7 +56,7 @@ def get_filename(filepath):
     """
     if os.path.exists(filepath): 
         if os.path.isfile(filepath):
-            head, tail = os.path.split(filepath)
+            _, tail = os.path.split(filepath)
             return tail
         else:
             raise IsADirectoryError("Expected a filepath but got a directory path.")
@@ -310,7 +310,11 @@ class Comparison_Job():
         topo_dict["rf"] = comp_dict["rf"]
         topo_dict["max_rf"] = comp_dict["max_rf"]
         # modified normalized rf distance = 1 - rf / max_rf 
-        topo_dict["rf_ratio"] = round(1 - comp_dict["rf"] / comp_dict["max_rf"],4)
+        # if tree is too small i.e. <= 3 taxa then rf dist is NA and max rf dist 0 
+        try:
+            topo_dict["rf_ratio"] = round(1 - comp_dict["rf"] / comp_dict["max_rf"],4)
+        except:
+            topo_dict["rf_ratio"] = None 
         # how many edges in the original newick are found in the generated newick 
         topo_dict["ref_edges_in_source"] = comp_dict["ref_edges_in_source"]
         count_original_edges = len(list(comp_dict["ref_edges"]))
@@ -319,7 +323,11 @@ class Comparison_Job():
         topo_dict["count_original_edges"] = count_original_edges
         topo_dict["count_missing_edges"] = count_missing_edges
         topo_dict["count_common_edges"] = count_common_edges
-        topo_dict["correct_edges_ratio"] = round(count_common_edges/count_original_edges, 4)
+        # BUG for some reason this caused a divison by zero error once
+        try:
+            topo_dict["correct_edges_ratio"] = round(count_common_edges/count_original_edges, 4)
+        except:
+            topo_dict["correct_edges_ratio"] = 0
         # topo_dict["treeko_dist"] = round(float(comp_dict["treeko_dist"]),4) # TODO treeKO dist is NA
         # compare multifurcations
         topo_dict["count_multifurcations_original"] = ut.count_multifurcations(original)
@@ -367,9 +375,9 @@ class Comparison_Job():
         # iterate over common leaf nodes and compute the difference of original leaf branch length and generated one
         for leaf in common_leaves:
             # original leaf
-            orig_leaf = original_tree.search_nodes(name=leaf.name)
+            orig_leaf = original_tree.search_nodes(name=leaf)[0]
             # generated leaf
-            gen_leaf = generated_tree.search_nodes(name=leaf.name)
+            gen_leaf = generated_tree.search_nodes(name=leaf)[0]
             # check if generated newick contains the current leaf
             leaf_parent_dist_diffs.append(orig_leaf.dist - gen_leaf.dist) 
         # calculate mean and median over absolute differences
@@ -378,19 +386,39 @@ class Comparison_Job():
         dist_dict["median_abs_diff"] = round(median(abs_leaf_parent_dist_diffs),4)
         # calculate mean diff over negative values i.e. generated edge is longer than original one
         neg_leaf_parent_dist_diffs = [diff for diff in leaf_parent_dist_diffs if diff < 0]
-        # "on average how much shorter are shorter edges i.e. edges that the model made shorter than they actually are?"
-        dist_dict["mean_neg_diff"] = round(mean(neg_leaf_parent_dist_diffs),4)
-        dist_dict["median_neg_diff"] = round(median(neg_leaf_parent_dist_diffs),4) 
+        if neg_leaf_parent_dist_diffs:
+            dist_dict["mean_neg_diff"] = round(mean(neg_leaf_parent_dist_diffs),4) 
+            dist_dict["median_neg_diff"] = round(median(neg_leaf_parent_dist_diffs),4) 
+        else:
+            # if there are 0 negative differences i.e. no edge was made longer by the model, set mean/median to 0
+            dist_dict["mean_neg_diff"] = 0 
+            dist_dict["median_neg_diff"] = 0
         # calculate mean diff over positive values i.e. generated edge is shorter than original one
         pos_leaf_parent_dist_diffs = [diff for diff in leaf_parent_dist_diffs if diff > 0]
-        dist_dict["mean_pos_diff"] = round(mean(pos_leaf_parent_dist_diffs),4)
-        dist_dict["median_pos_diff"] = round(median(pos_leaf_parent_dist_diffs),4)
+        if pos_leaf_parent_dist_diffs:
+            dist_dict["mean_pos_diff"] = round(mean(pos_leaf_parent_dist_diffs),4)
+            dist_dict["median_pos_diff"] = round(median(pos_leaf_parent_dist_diffs),4)
+        else:
+            # if no edge was shortened by the model, set mean/median to 0
+            dist_dict["mean_pos_diff"] = 0
+            dist_dict["median_pos_diff"] = 0
         # list for pairwise distances
         abs_pairwise_dist_diffs = []
         # iterate over common leaf pairs and get the absolute difference in pairwise distances
         for leaf1, leaf2 in combinations(common_leaves, 2):
-            original_dist = original_tree.get_distance(leaf1, leaf2)
-            generated_dist = generated_tree.get_distance(leaf1, leaf2)
+            # BUG duplicated leaves cause crash in ete3s compare function => quick solution is to skip them
+            try:
+                original_dist = original_tree.get_distance(leaf1, leaf2)
+            except Exception as e:
+                logging.warning(f"Can't compare {leaf1} and {leaf2} in original tree: {e}")
+                # skip over leaves that are ambiguous
+                continue
+            try:
+                generated_dist = generated_tree.get_distance(leaf1, leaf2)
+            except Exception as e:
+                logging.warning(f"Can't compare {leaf1} and {leaf2} in generated tree: {e}")
+                # skip over leaves that are ambiguous
+                continue
             abs_pairwise_dist_diffs.append(abs(original_dist-generated_dist))
         dist_dict["mean_pairwise_diff"] = round(mean(abs_pairwise_dist_diffs),4)
         dist_dict["median_pairwise_diff"] = round(median(abs_pairwise_dist_diffs),4)
