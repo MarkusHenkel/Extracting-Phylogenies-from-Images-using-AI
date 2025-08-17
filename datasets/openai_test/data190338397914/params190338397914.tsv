@@ -1,0 +1,2 @@
+random_distances	max_distance	amount_taxa	package	branch_lengths_displayed	multifurcations_allowed	branch_vertical_margin[px]	fontsize	linewidth[px]	taxa_only	topo_only	align_taxa	
+True	9	7	ete3	True	False	57	15	7	False	False	True	

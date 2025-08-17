@@ -1,0 +1,2 @@
+random_distances	max_distance	amount_taxa	package	branch_lengths_displayed	multifurcations_allowed	branch_vertical_margin[px]	fontsize	linewidth[px]	taxa_only	topo_only	align_taxa	
+True	6	7	phylo	False	True	10	16	3	False	False	False	
