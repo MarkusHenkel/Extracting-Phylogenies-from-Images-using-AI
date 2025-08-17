@@ -24,7 +24,7 @@ console_logger = logging.getLogger(__name__)
 ncbi = NCBITaxa()
 # ncbi.update_taxonomy_database()
 
-def is_taxid_valid(taxid, max_length=35):
+def is_taxid_valid(taxid, max_length=25):
     """
     Check if a given taxon ID is valid (present in the NCBI taxonomy and not a digit string) 
 
@@ -92,11 +92,10 @@ class TreeRender:
         max_distance, # attributes of newick string itself not the render
         amount_taxa, # attributes of newick string itself not the render
         package,
+        img_res = (1024,1024),
         file_id = None,
         outdir_path = None, # Path to the directory where output directory is created at
         display_lengths= True, 
-        circular_tree = False, 
-        right_to_left_orientation = False, # if False then default orientation left to right is applied
         allow_multifurcations = True,
         branch_vertical_margin = 10, # number of pixels between adjacent branches
         taxa_only = False, 
@@ -112,8 +111,6 @@ class TreeRender:
         self.file_id = file_id
         self.outdir_path = outdir_path
         self.display_lengths = display_lengths
-        self.circular_tree = circular_tree
-        self.right_to_left_orientation = right_to_left_orientation
         self.allow_multifurcations = allow_multifurcations
         self.branch_vertical_margin = branch_vertical_margin
         self.fontsize = fontsize
@@ -121,6 +118,7 @@ class TreeRender:
         self.taxa_only = taxa_only
         self.topology_only = topology_only
         self.align_taxa = align_taxa
+        self.img_res = img_res
     
     def solve_multifurcations(self):
         """
@@ -172,16 +170,20 @@ class TreeRender:
             raise ValueError(f"Newick {self.newick} is not valid.")
         # make the the newick into a file so that it can be drawn by bio.phylo 
         newick_tree = Phylo.read(StringIO(self.newick), "newick")
-        # create a matplotlib figure 
-        fig = plt.figure(figsize=(30, 20), dpi=150)
+        # dots per inch is 100 so devide width and height in pixels by 100 to get specified resolution
+        width_inch = self.img_res[0] / 100
+        height_inch = self.img_res[1] / 100
+        fig = plt.figure(figsize=(width_inch, height_inch), dpi=100)
         fontprops = fm.FontProperties(size=self.fontsize)
         axes = fig.add_subplot(1, 1, 1)
+        # put root farther to the left
+        plt.subplots_adjust(left=0)
         # if topo or taxa only is specified dont add the sizebar
         if not (self.topology_only or self.taxa_only):
             # add scalebar to plot manually (bio.phylo does not provide it)
             scalebar = AnchoredSizeBar(
                 axes.transData,
-                1, '1.0', 'lower left', 
+                5, '5.0', 'lower left', 
                 pad=2,
                 color='black',
                 frameon=False,
@@ -189,7 +191,8 @@ class TreeRender:
                 fontproperties=fontprops,
                 # bbox_to_anchor=Bbox.from_bounds(0,0,1,1),
                 bbox_to_anchor=(0.15, 0),
-                bbox_transform=axes.figure.transFigure
+                bbox_transform=axes.figure.transFigure,
+                sep=4
             )
             axes.add_artist(scalebar)
         # set line width and fontsize
@@ -206,6 +209,7 @@ class TreeRender:
             Phylo.draw(newick_tree, axes=axes, do_show=False, branch_labels=lambda c: c.branch_length)
         ###### DEBUGGING
         # plt.show() # show the tree instead of writing a file each time
+        # exit()
         # if not os.path.exists(os.path.dirname(outfile_path)):
         #     os.makedirs(os.path.dirname(outfile_path), exist_ok=True)
         #     plt.savefig(outfile_path, bbox_inches='tight') 
@@ -214,7 +218,7 @@ class TreeRender:
         #     plt.savefig(outfile_path, bbox_inches='tight')
         #     console_logger.info(f"Image was saved to specified directory.")
         os.makedirs(os.path.dirname(outfile_path), exist_ok=True)
-        plt.savefig(outfile_path, bbox_inches='tight')
+        plt.savefig(outfile_path)
         plt.close()
         console_logger.info(f"Image was saved to data directory.")
         
@@ -234,14 +238,27 @@ class TreeRender:
         newick_tree = Tree(self.newick)
         # create treestyle object to adjust tree properties of Tree object
         treestyle = TreeStyle()
+        # make scalebar a fixed size 
+        treestyle.scale_length = 5
         # create nodestyle object to adjust node and edge properties of Tree object
         nodestyle = NodeStyle()
         # adjust line width
         nodestyle["vt_line_width"] = self.linewidth # reasonable range: [1,10]
         nodestyle["hz_line_width"] = self.linewidth # reasonable range: [1,10]
-        # apply nodestyle adjustments to the whole tree
+        # remove dots at each node
+        nodestyle["size"] = 0
+        # create nodestyle for removing dots at nodes for all nodes except the root
+        rootstyle = NodeStyle()
+        # use same line width but dont remove dot
+        nodestyle["vt_line_width"] = self.linewidth # reasonable range: [1,10]
+        nodestyle["hz_line_width"] = self.linewidth # reasonable range: [1,10]
+        # apply nodestyle adjustments to the whole tree 
         for node in newick_tree.traverse():
-            node.set_style(node_style=nodestyle)
+            # only remove dots for the inner nodes and leaves
+            if node.is_root():
+                node.set_style(node_style=rootstyle)
+            else:
+                node.set_style(node_style=nodestyle)
         # adjust fontsize 
         fontsize = self.fontsize # reasonable range: [8,30]
         # create layout for adjusting the fontsize of taxa and distances
@@ -275,12 +292,6 @@ class TreeRender:
                 treestyle.branch_vertical_margin = self.branch_vertical_margin  
         else:
             treestyle.branch_vertical_margin = 10
-        if self.circular_tree:
-            treestyle.mode = "c"
-        else:     
-            treestyle.mode = "r"
-        # in ete3 0 is left to right, 1 is right to left 
-        treestyle.orientation = int(self.right_to_left_orientation)
         # creating text faces for adjusting fontsize does not replace the default font, turn off the default font 
         treestyle.show_leaf_name = False
         treestyle.show_branch_length = False
@@ -291,9 +302,10 @@ class TreeRender:
         treestyle.complete_branch_lines_when_necessary = True # does not work well for internal nodes
         ###### DEBUGGING
         # newick_tree.show(tree_style=treestyle) # show the tree instead of writing a file each time
+        # exit()
         # save the rendered image to file
         os.makedirs(os.path.dirname(outfile_path), exist_ok=True)
-        newick_tree.render(file_name=outfile_path, tree_style=treestyle)
+        newick_tree.render(file_name=outfile_path, tree_style=treestyle, units="px", h=self.img_res[1], w=self.img_res[0])
         console_logger.info(f"Image was saved to data directory.")
             
     def write_params_to_tsv(self, outfile_path):
@@ -302,13 +314,12 @@ class TreeRender:
         AI on different parameters.
         This is done for each image seperately.
         """
-        tsv_header = "random_distances\tmax_distance\tamount_taxa\tpackage\tbranch_lengths_displayed\tcircular_tree\t"
-        tsv_header += "right_to_left_orientation\tmultifurcations_allowed\tbranch_vertical_margin[px]\t"
+        tsv_header = "random_distances\tmax_distance\tamount_taxa\tpackage\tbranch_lengths_displayed\t"
+        tsv_header += "multifurcations_allowed\tbranch_vertical_margin[px]\t"
         tsv_header += "fontsize\tlinewidth[px]\ttaxa_only\ttopo_only\talign_taxa\t"
         tsv_header += "\n"
         params = f"{self.randomize_distances}\t{self.max_distance}\t{self.amount_taxa}\t"
-        params += f"{self.package}\t{self.display_lengths}\t{self.circular_tree}\t"
-        params += f"{self.right_to_left_orientation}\t{self.allow_multifurcations}\t"
+        params += f"{self.package}\t{self.display_lengths}\t{self.allow_multifurcations}\t"
         params += f"{self.branch_vertical_margin}\t{self.fontsize}\t{self.linewidth}\t{self.taxa_only}\t"
         params += f"{self.topology_only}\t{self.align_taxa}\t" 
         with open(outfile_path, "w") as tsv_file:
@@ -376,9 +387,9 @@ class TreeRender:
             if "branch_vertical_margin" not in excluded_params:
                 self.branch_vertical_margin = random.randint(10, 100)
             if "fontsize" not in excluded_params:
-                self.fontsize = random.randint(8,20) # fontsize ete3 range: [8, 20]
+                self.fontsize = random.randint(12,15) # fontsize ete3 range: [12,16]
             if "linewidth" not in excluded_params: 
-                self.linewidth = random.randint(1,10)
+                self.linewidth = random.randint(1,8) 
             if "align_taxa" not in excluded_params:
                 self.align_taxa = random.choice([True,False])
         if self.package == "phylo":
@@ -392,7 +403,7 @@ class TreeRender:
                     # in phylo branch lengths arent legible if linewidth is increased
                     self.linewidth = 1 
         if "amount_taxa" not in excluded_params:
-            self.amount_taxa = random.randint(3,25) # taxa range: [3, 25]
+            self.amount_taxa = random.randint(3,25) # taxa range: [4, 25]
         if "randomize_distances" not in excluded_params:
             self.randomize_distances = random.choice([True,False])
         if "max_distance" not in excluded_params:
@@ -480,6 +491,9 @@ def main():
     argument_parser.add_argument("-n", "--number_directories", type=int, required=False, default=1,
                                     help="""Choose the number of directories created with the chosen parameters. 
                                     Default: 1.""")
+    argument_parser.add_argument("-i", "--image_resolution", type=int,required=False, nargs=2,
+                                    help="""Choose width and height of image e.g. -i 1024 1024. Be aware that tree might 
+                                    not fit into the chosen resolution and that taxa could be cut off. Default: 1024x1024.""")
     argument_parser.add_argument("-f", "--fontsize", type=int, required=False, 
                                     help="""Choose the size of the font. Also applies to branch lengths if applicable. 
                                     Default: 8 (ETE3), 16 (Bio.Phylo)""")
@@ -493,8 +507,8 @@ def main():
     argument_parser.add_argument('-a', '--amount_taxa', required=False, type=int,
                                     help='Type=Int. Choose the preferred amount of generated taxa. Default: 10.')
     argument_parser.add_argument('-rd', '--randomize_distances', required=False, type=str, 
-                                    help="""If true: specified the distances (branch lengths) will be 
-                                    randomized. If false: branch lengths won't be randomized. Default: False.""")
+                                    help="""If true: the distances (branch lengths) will be randomized between 1 and 
+                                    <--max_distance>. Default: False.""")
     argument_parser.add_argument('-md', '--max_distance', required=False, type=int, 
                                     help="""Type=Int. If --randomize_distances is specified, --max_distance will be the 
                                     upper limit of randomized distances. Default: 10.0.""")
@@ -503,12 +517,6 @@ def main():
                                     image as branch labels. False: Branch lengths won't be displayed as branch labels 
                                     but branches will still keep their length. 
                                     Default: True.""")
-    argument_parser.add_argument("-c", "--circular_tree", required=False, action="store_true", default=False,
-                                    help="""On/Off flag. ETE3 only. If True the tree in the image will be in 
-                                    circular format. Default: False.""")
-    argument_parser.add_argument("-rl", "--right_to_left_orientation", required=False, action="store_true", 
-                                    default=False,help="""On/Off flag. ETE only. Specify if tree is oriented from 
-                                    right to left (taxa on the left). Default: False (left to right orientation)""")
     argument_parser.add_argument("-da", "--allow_multifurcations", required=False, type=str, 
                                     help="""If true: Tree won't necessarily binary. If false: Tree will be strictly 
                                     binary. Default: True.""")
@@ -528,14 +536,13 @@ def main():
     # if the amount of taxa is not specified it defaults to 10 taxa
     number_directories = args.number_directories
     amount_taxa = args.amount_taxa
+    image_resolution = args.image_resolution
     randomize_distances = ut.get_bool_from_string(rd) if (rd:=args.randomize_distances) else None
     max_distance = args.max_distance
     display_lengths= ut.get_bool_from_string(dl) if (dl:=args.display_lengths) else None
     outdir_path = args.outdir_path
     package = args.package
-    circular_tree = args.circular_tree
     allow_multifurcations = ut.get_bool_from_string(am) if (am:=args.allow_multifurcations) else None
-    right_to_left_orientation = args.right_to_left_orientation 
     branch_vertical_margin = args.branch_vertical_margin
     create_rand_tree = args.create_rand_tree
     fontsize = args.fontsize
@@ -556,6 +563,10 @@ def main():
     print("\n\n\tData generation for extracting phylogenies from images using AI.\n\n")
     console_logger.info('Started')
     ########## SET DEFAULT VALUES ##########
+    if image_resolution:
+        image_resolution = (image_resolution[0], image_resolution[1])
+    else: 
+        image_resolution = (1024, 1024)
     # remember if parameters relevant for randomize_treerender() were specified, those wont be randomized
     used_parameters = []
     # set default package
@@ -621,21 +632,13 @@ def main():
         linewidth = 1
     # warn user if they use ete3 parameters with a module other than ete3
     if (not package == "ete3") and (
-        branch_vertical_margin or 
-        circular_tree or 
-        right_to_left_orientation
+        branch_vertical_margin
     ):
         # warn user which parameters cant be applied and reset them to default values
         param_warning = "You are using parameters that are ete3 only:\n"
         if branch_vertical_margin:
             param_warning += "branch_vertical\n"
             branch_vertical_margin = None
-        if circular_tree:
-            param_warning += "circular_tree\n"
-            circular_tree = False
-        if right_to_left_orientation:
-            param_warning += "right_to_left_orientation\n"
-            right_to_left_orientation = False
         console_logger.warning(param_warning)
         print(f"Resetting ete3 parameters. Do you want to proceed?")
         ask_user_to_continue()
@@ -656,6 +659,7 @@ def main():
         ########## INSTANTIATING TREERENDER OBJECT ##########
         tree_render = TreeRender(
             newick="", # initialize with empty string, finished newick is added at a later point
+            img_res=image_resolution,
             randomize_distances = randomize_distances,
             max_distance=max_distance,
             amount_taxa=amount_taxa,
@@ -663,8 +667,6 @@ def main():
             file_id=file_id,
             package=package,
             display_lengths=display_lengths,
-            circular_tree=circular_tree,
-            right_to_left_orientation=right_to_left_orientation,
             allow_multifurcations=allow_multifurcations,
             branch_vertical_margin=branch_vertical_margin,
             fontsize=fontsize,
@@ -686,6 +688,7 @@ def main():
         tree_render.create_output_directory()
         iteration_info =f"""Default file ID: {file_id}
         Parameters:
+        Image resolution: {tree_render.img_res[0]}x{tree_render.img_res[1]}
         Fontsize: {tree_render.fontsize}
         Linewidth: {tree_render.linewidth}
         Taxa only: {tree_render.taxa_only}
@@ -693,9 +696,7 @@ def main():
         Randomize distances: {tree_render.randomize_distances}
         Max distance: {tree_render.max_distance} 
         Amount of taxa: {tree_render.amount_taxa}
-        Circular tree: {tree_render.circular_tree}
         Used package: {tree_render.package}
-        Orientation: {"left to right" if not tree_render.right_to_left_orientation else "right to left"}
         Allow multifurcations: {tree_render.allow_multifurcations}
         Vertical margin for adjacent branches: {tree_render.branch_vertical_margin if tree_render.package == "ete3" else None}
         Branch lengths displayed: {tree_render.display_lengths}
