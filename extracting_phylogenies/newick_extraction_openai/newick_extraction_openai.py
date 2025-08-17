@@ -178,7 +178,7 @@ class Newick_Extraction_Job:
             raise ValueError(f"""Error in generate_newick_from_image_directly: Given model is not 
                              supported. Please choose from gpt-4.1, o4-mini, gpt-4o or gpt-5""")
         img_path = self.get_image_path()
-        prompt = """Give me the Newick format of this phylogenetic tree."""
+        prompt = "Give me the Newick format of this phylogenetic tree."
         instructions =  instructions
         b64_image = encode_image(img_path)
         # conditionally include temperature and top_p in the create() functions args because o4-mini does not support it
@@ -365,6 +365,17 @@ class Newick_Extraction_Job:
             console_logger.info("Newick is topology-only.")
             self.topo_only = True
             format = 100
+        # remove duplicated leaves if there are any
+        if not self.topo_only:
+            leaves_seen = []
+            tree = Tree(newick)
+            leaves = [leaf for leaf in tree.traverse() if leaf.is_leaf()]
+            for leaf in leaves:
+                if leaf.name in leaves_seen:
+                    leaf.detach()
+                else:
+                    leaves_seen.append(leaf.name)
+            newick = tree.write()
         # if newick's formatting is correct skip AI postprocessing otherwise do it
         if ut.is_newick(newick, format=format):
             console_logger.info(f"Skipping AI post-processing.")    
