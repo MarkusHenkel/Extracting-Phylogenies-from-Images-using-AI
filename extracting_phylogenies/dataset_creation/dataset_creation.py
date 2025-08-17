@@ -92,7 +92,7 @@ class TreeRender:
         max_distance, # attributes of newick string itself not the render
         amount_taxa, # attributes of newick string itself not the render
         package,
-        img_res = (1024,1024),
+        img_res = None,
         file_id = None,
         outdir_path = None, # Path to the directory where output directory is created at
         display_lengths= True, 
@@ -101,6 +101,7 @@ class TreeRender:
         taxa_only = False, 
         topology_only = False,
         align_taxa = False,
+        max_amount_taxa = None,
         ):
         # Attributes
         self.newick = newick
@@ -119,6 +120,7 @@ class TreeRender:
         self.topology_only = topology_only
         self.align_taxa = align_taxa
         self.img_res = img_res
+        self.max_amount_taxa = max_amount_taxa
     
     def solve_multifurcations(self):
         """
@@ -171,9 +173,12 @@ class TreeRender:
         # make the the newick into a file so that it can be drawn by bio.phylo 
         newick_tree = Phylo.read(StringIO(self.newick), "newick")
         # dots per inch is 100 so devide width and height in pixels by 100 to get specified resolution
-        width_inch = self.img_res[0] / 100
-        height_inch = self.img_res[1] / 100
-        fig = plt.figure(figsize=(width_inch, height_inch), dpi=100)
+        if self.img_res:
+            width_inch = self.img_res[0] / 100
+            height_inch = self.img_res[1] / 100
+            fig = plt.figure(figsize=(width_inch, height_inch), dpi=100)
+        else:
+            fig = plt.figure(figsize=(20.48, 20.48), dpi=100)
         fontprops = fm.FontProperties(size=self.fontsize)
         axes = fig.add_subplot(1, 1, 1)
         # put root farther to the left
@@ -181,19 +186,34 @@ class TreeRender:
         # if topo or taxa only is specified dont add the sizebar
         if not (self.topology_only or self.taxa_only):
             # add scalebar to plot manually (bio.phylo does not provide it)
-            scalebar = AnchoredSizeBar(
-                axes.transData,
-                5, '5.0', 'lower left', 
-                pad=2,
-                color='black',
-                frameon=False,
-                # size_vertical=1,
-                fontproperties=fontprops,
-                # bbox_to_anchor=Bbox.from_bounds(0,0,1,1),
-                bbox_to_anchor=(0.15, 0),
-                bbox_transform=axes.figure.transFigure,
-                sep=4
-            )
+            if self.randomize_distances and self.max_distance >= 5:
+                scalebar = AnchoredSizeBar(
+                    axes.transData,
+                    5, '5.0', 'lower left', 
+                    pad=2,
+                    color='black',
+                    frameon=False,
+                    # size_vertical=1,
+                    fontproperties=fontprops,
+                    # bbox_to_anchor=Bbox.from_bounds(0,0,1,1),
+                    bbox_to_anchor=(0.15, 0),
+                    bbox_transform=axes.figure.transFigure,
+                    sep=4
+                )
+            else:
+                scalebar = AnchoredSizeBar(
+                    axes.transData,
+                    1, '1.0', 'lower left', 
+                    pad=2,
+                    color='black',
+                    frameon=False,
+                    # size_vertical=1,
+                    fontproperties=fontprops,
+                    # bbox_to_anchor=Bbox.from_bounds(0,0,1,1),
+                    bbox_to_anchor=(0.15, 0),
+                    bbox_transform=axes.figure.transFigure,
+                    sep=4
+                )
             axes.add_artist(scalebar)
         # set line width and fontsize
         mpl.rcParams['lines.linewidth'] = self.linewidth # reasonable range: [1,10] (if no branch lengths)
@@ -239,7 +259,10 @@ class TreeRender:
         # create treestyle object to adjust tree properties of Tree object
         treestyle = TreeStyle()
         # make scalebar a fixed size 
-        treestyle.scale_length = 5
+        if self.randomize_distances and self.max_distance >= 5:
+            treestyle.scale_length = 5
+        else: 
+            treestyle.scale_length = 1
         # create nodestyle object to adjust node and edge properties of Tree object
         nodestyle = NodeStyle()
         # adjust line width
@@ -250,8 +273,8 @@ class TreeRender:
         # create nodestyle for removing dots at nodes for all nodes except the root
         rootstyle = NodeStyle()
         # use same line width but dont remove dot
-        nodestyle["vt_line_width"] = self.linewidth # reasonable range: [1,10]
-        nodestyle["hz_line_width"] = self.linewidth # reasonable range: [1,10]
+        rootstyle["vt_line_width"] = self.linewidth # reasonable range: [1,10]
+        rootstyle["hz_line_width"] = self.linewidth # reasonable range: [1,10]
         # apply nodestyle adjustments to the whole tree 
         for node in newick_tree.traverse():
             # only remove dots for the inner nodes and leaves
@@ -305,7 +328,10 @@ class TreeRender:
         # exit()
         # save the rendered image to file
         os.makedirs(os.path.dirname(outfile_path), exist_ok=True)
-        newick_tree.render(file_name=outfile_path, tree_style=treestyle, units="px", h=self.img_res[1], w=self.img_res[0])
+        if self.img_res:
+            newick_tree.render(file_name=outfile_path, tree_style=treestyle, units="px", h=self.img_res[1], w=self.img_res[0])
+        else: 
+            newick_tree.render(file_name=outfile_path, tree_style=treestyle)
         console_logger.info(f"Image was saved to data directory.")
             
     def write_params_to_tsv(self, outfile_path):
@@ -403,14 +429,12 @@ class TreeRender:
                     # in phylo branch lengths arent legible if linewidth is increased
                     self.linewidth = 1 
         if "amount_taxa" not in excluded_params:
-            self.amount_taxa = random.randint(3,25) # taxa range: [4, 25]
+            self.amount_taxa = random.randint(3,self.max_amount_taxa) # default taxa range: [3, 10]
         if "randomize_distances" not in excluded_params:
             self.randomize_distances = random.choice([True,False])
         if "max_distance" not in excluded_params:
             if self.randomize_distances:
                 self.max_distance = random.randint(1, 10) # max distance range: [1, 10]
-        ##### DEBUGGING
-        # return self
     
     def randomize_distances_func(self):
         """
@@ -456,9 +480,8 @@ def main():
         package, amount_taxa, randomize_distances, max_distance, allow_multifurcations, branch_vertical_margin, 
         fontsize, linewidth, display_lengths, align_taxa. If --create_rand_tree and e.g. package are specified
         then package won't be randomized. Quickly create a diverse dataset instead of one type of image by 
-        specifying --create_rand_tree in combination with --number_directories. --topology_only removes distances 
-        and taxa from the newick and the image of each directory created with --create_rand_tree. --taxa_only
-        removes just the distances in newick and image."""
+        specifying --create_rand_tree in combination with --number_directories. Can be combined with --topology_only 
+        and --taxa_only --taxa_only."""
     )
     argument_parser.add_argument(
         "-x",
@@ -493,7 +516,8 @@ def main():
                                     Default: 1.""")
     argument_parser.add_argument("-i", "--image_resolution", type=int,required=False, nargs=2,
                                     help="""Choose width and height of image e.g. -i 1024 1024. Be aware that tree might 
-                                    not fit into the chosen resolution and that taxa could be cut off. Default: 1024x1024.""")
+                                    not fit into the chosen resolution and that taxa could be cut off. Default for 
+                                    phylo: 2048x2048, ete3: resolution is dynamically chosen to let tree fit within in.""")
     argument_parser.add_argument("-f", "--fontsize", type=int, required=False, 
                                     help="""Choose the size of the font. Also applies to branch lengths if applicable. 
                                     Default: 8 (ETE3), 16 (Bio.Phylo)""")
@@ -505,7 +529,13 @@ def main():
                                     help="""Specify which package is used in the creation of the image. 
                                     Choose between Bio.Phylo and ETE3 Toolkit. Default: ete3.""")
     argument_parser.add_argument('-a', '--amount_taxa', required=False, type=int,
-                                    help='Type=Int. Choose the preferred amount of generated taxa. Default: 10.')
+                                 help='Type=Int. Choose the preferred amount of generated taxa. Default: 10.')
+    argument_parser.add_argument("-ma", "--max_amount_taxa", required=False, type=int, default=10,
+                                 help="""Type=Int. When --create_rand_tree and --max_amount_taxa are specified, the 
+                                 amount of taxa is randomized with --max_amount_taxa being the upper limit. Not to be 
+                                 confused with --amount_taxa which sets the amount
+                                 of taxa and stops the amount of taxa from being randomized when specified in 
+                                 combination with -r. Default: 10.""")
     argument_parser.add_argument('-rd', '--randomize_distances', required=False, type=str, 
                                     help="""If true: the distances (branch lengths) will be randomized between 1 and 
                                     <--max_distance>. Default: False.""")
@@ -551,6 +581,8 @@ def main():
     topology_only = args.topology_only
     align_taxa = args.align_taxa
     quiet = args.quiet
+    max_amount_taxa = args.max_amount_taxa
+    
     ########## CONFIGURE LOGGER ##########
     logFormatter = logging.Formatter("%(asctime)s [%(levelname)-5.5s]  %(message)s")
     stream_handler = logging.StreamHandler(sys.stdout)
@@ -562,11 +594,10 @@ def main():
         console_logger.setLevel(logging.INFO)
     print("\n\n\tData generation for extracting phylogenies from images using AI.\n\n")
     console_logger.info('Started')
+    
     ########## SET DEFAULT VALUES ##########
     if image_resolution:
         image_resolution = (image_resolution[0], image_resolution[1])
-    else: 
-        image_resolution = (1024, 1024)
     # remember if parameters relevant for randomize_treerender() were specified, those wont be randomized
     used_parameters = []
     # set default package
@@ -608,6 +639,7 @@ def main():
         max_distance = 10.0
     else: 
         used_parameters.append("max_distance")
+    # bool args
     if display_lengths == None:
         display_lengths = True
     else: 
@@ -620,16 +652,14 @@ def main():
         randomize_distances = False
     else: 
         used_parameters.append("randomize_distances")
-    
+        
     ########## CHECKS ##########
-    # TODO: remove unnecessary parameters from treerenders if topo or taxa_only is specified (not fontsize !!!)
-    # TODO: warn user if he uses params compatible with topo or taxa only => font, linewidth, branch lengths etc
-    # TODO: show default vertical margin for ete3 
-    # TODO: implement max_taxa_length argument, is_taxid_valid 
-    # TODO: remove node faces from inner nodes and leafs in ete3?
     # negative or zero linewidth is set to 1
     if package == "ete3" and linewidth <= 0:
         linewidth = 1
+    if max_amount_taxa < 3:
+        console_logger.info(f"--max_amount_taxa should not deceed 3. Setting --max_amount_taxa to 3.")
+        max_amount_taxa = 3
     # warn user if they use ete3 parameters with a module other than ete3
     if (not package == "ete3") and (
         branch_vertical_margin
@@ -674,6 +704,7 @@ def main():
             taxa_only=taxa_only,
             topology_only=topology_only,
             align_taxa=align_taxa,
+            max_amount_taxa=max_amount_taxa
         )
         # if the user wants to generate a tree with randomized parameters
         if create_rand_tree:
@@ -688,7 +719,7 @@ def main():
         tree_render.create_output_directory()
         iteration_info =f"""Default file ID: {file_id}
         Parameters:
-        Image resolution: {tree_render.img_res[0]}x{tree_render.img_res[1]}
+        Image resolution: {f"{tree_render.img_res[0]}x{tree_render.img_res[1]}" if tree_render.img_res else "Default"}
         Fontsize: {tree_render.fontsize}
         Linewidth: {tree_render.linewidth}
         Taxa only: {tree_render.taxa_only}
