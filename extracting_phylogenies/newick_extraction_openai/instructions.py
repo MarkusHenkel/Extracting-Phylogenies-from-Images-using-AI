@@ -1,7 +1,8 @@
 # file for saving instructions for every type of request
-instr_nwk_regular = """You are given an image of a phylogenetic tree that may have multifurcations. You task is to 
-output only the tree in valid Newick format. Preserve all taxa (if visible), all branch
-lengths (if visible) and topology.
+prompt = "Give me the Newick format of this phylogenetic tree."
+
+instr_nwk_regular = """You are given an image of a phylogenetic tree that may have multifurcations. 
+You task is to output only the tree in valid Newick format. Preserve all taxa, all branchlengths and topology.
 In case there are no branch lengths then infer the branch lengths from the scale bar.
 
 Guidelines:
@@ -11,10 +12,8 @@ Guidelines:
 - Dont put new lines in the newick
 - The Newick string must include the taxon names exactly as shown in the image
 - The Newick string must correspond to the topology exactly as shown in the image
-- The Newick string must include branch lengths exactly as shown in the image or from inferring them from the 
-scale bar
-- The Newick must always include branch lengths, either from the branch labels or from inferring them from the 
-scale bar
+- The Newick string must include branch lengths exactly as shown in the image or from inferring them from the scale bar
+- The Newick must always include branch lengths, either from the branch labels or from inferring them from the scale bar
 
 Examples:
 ((<taxon1>:<branch_length1>,<taxon2>:<branch_length2>):<branch_length4>,<taxon3>:<branch_length3>);
@@ -24,9 +23,8 @@ Example with multifurcations:
 """
 
 
-instr_nwk_taxa_only = """You are given an image of a phylogenetic tree that may have multifurcations. You task is to 
-output only the tree in valid Newick format. Preserve all taxa (if visible), all branch
-lengths (if visible) and topology.
+instr_nwk_taxa_only = """You are given an image of a phylogenetic tree that may have multifurcations. 
+You task is to output only the tree in valid Newick format. Preserve all taxa (if visible), all branchlengths (if visible) and topology.
 In case there are no branch lengths then infer the branch lengths from the scale bar.
 
 Guidelines:
@@ -45,8 +43,8 @@ Example with multifurcations:
 """
 
 
-instr_nwk_topo_only = """You are given an image of a phylogenetic tree that may have multifurcations. You task is to 
-output only the tree in valid Newick format. Ignore the taxa and the branch lengths, output a topology-only newick.
+instr_nwk_topo_only = """You are given an image of a phylogenetic tree that may have multifurcations. 
+You task is to output only the tree in valid Newick format. Ignore the taxa and the branch lengths, output a topology-only newick.
  
 Guidelines:
 - Reply with nothing but the newick, no explanation, no prefix, no suffix
@@ -73,10 +71,8 @@ Guidelines:
 - Dont put new lines in the newick
 - The Newick string must include the taxon names exactly as shown in the image
 - The Newick string must correspond to the topology exactly as shown in the image
-- The Newick string must include branch lengths exactly as shown in the image or from inferring them from the 
-scale bar
-- The Newick must always include branch lengths, either from the branch labels or from inferring them from the 
-scale bar
+- The Newick string must include branch lengths exactly as shown in the image or from inferring them from the scale bar
+- The Newick must always include branch lengths, either from the branch labels or from inferring them from the scale bar
 - Only if there is no scale bar and no branch labels, dont include the distances e.g. ((A,B),((C,D),E));
 - Only if there are no branch labels, scale bar and no taxa output just the topology e.g. ((,),(,(,)));
 
@@ -132,8 +128,7 @@ Guidelines:
 - Two tabs mean that the clade or leaf is the grandchild of the root and so on
 - There is a single line with a distance in one of the corners, this is a scale bar, infer branch lengths from it
 - The topology string must include all taxon names and branch lengths
-- The Newick string must include branch lengths exactly as shown in the image or from inferring them from the 
-scale bar
+- The Newick string must include branch lengths exactly as shown in the image or from inferring them from the scale bar
 """
 
 
@@ -246,14 +241,10 @@ Guidelines:
 - One tab of indentation means that the clade or leaf is the child of the root
 - Two tabs mean that the clade or leaf is the grandchild of the root and so on
 - The topology string must include all taxon names and branch lengths
-- The Newick string must include branch lengths exactly as shown in the image or from inferring them from the 
-scale bar
-- The Newick must always include branch lengths, either from the branch labels or from inferring them from the 
-scale bar
-- Only if there is no scale bar and no branch labels, dont include the distances 
-e.g. Clade(branch_length=, name='Crassulaceae')
-- Only if there are no branch labels, scale bar and no taxa output just the topology 
-e.g. Clade(branch_length=, name=)
+- The Newick string must include branch lengths exactly as shown in the image or from inferring them from the scale bar
+- The Newick must always include branch lengths, either from the branch labels or from inferring them from the scale bar
+- Only if there is no scale bar and no branch labels, dont include the distances e.g. Clade(branch_length=, name='Crassulaceae')
+- Only if there are no branch labels, scale bar and no taxa output just the topology e.g. Clade(branch_length=, name=)
 """
     
     
