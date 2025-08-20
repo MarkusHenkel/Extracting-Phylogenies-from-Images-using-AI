@@ -92,6 +92,8 @@ class TreeRender:
         max_distance, # attributes of newick string itself not the render
         amount_taxa, # attributes of newick string itself not the render
         package,
+        circular_tree = False, 
+        right_to_left_orientation = False,
         img_res = None,
         file_id = None,
         outdir_path = None, # Path to the directory where output directory is created at
@@ -109,6 +111,8 @@ class TreeRender:
         self.max_distance = max_distance
         self.amount_taxa = amount_taxa
         self.package = package
+        self.circular_tree = circular_tree
+        self.right_to_left_orientation = right_to_left_orientation
         self.file_id = file_id
         self.outdir_path = outdir_path
         self.display_lengths = display_lengths
@@ -323,6 +327,13 @@ class TreeRender:
             treestyle.show_scale = False
         # add dotted lines that ete3 adds to edges when edge is too short for branch length label
         treestyle.complete_branch_lines_when_necessary = True # does not work well for internal nodes
+        if self.circular_tree:
+            console_logger.info("Creating tree with circular format.")
+            treestyle.mode = "c"
+        else:     
+            treestyle.mode = "r"
+        # in ete3 0 is left to right, 1 is right to left 
+        treestyle.orientation = int(self.right_to_left_orientation)
         ###### DEBUGGING
         # newick_tree.show(tree_style=treestyle) # show the tree instead of writing a file each time
         # exit()
@@ -340,12 +351,13 @@ class TreeRender:
         AI on different parameters.
         This is done for each image seperately.
         """
-        tsv_header = "random_distances\tmax_distance\tamount_taxa\tpackage\tbranch_lengths_displayed\t"
-        tsv_header += "multifurcations_allowed\tbranch_vertical_margin[px]\t"
+        tsv_header = "random_distances\tmax_distance\tamount_taxa\tpackage\tbranch_lengths_displayed\tcircular_tree\t"
+        tsv_header += "right_to_left_orientation\tmultifurcations_allowed\tbranch_vertical_margin[px]\t"
         tsv_header += "fontsize\tlinewidth[px]\ttaxa_only\ttopo_only\talign_taxa\t"
         tsv_header += "\n"
         params = f"{self.randomize_distances}\t{self.max_distance}\t{self.amount_taxa}\t"
-        params += f"{self.package}\t{self.display_lengths}\t{self.allow_multifurcations}\t"
+        params += f"{self.package}\t{self.display_lengths}\t{self.circular_tree}\t{self.right_to_left_orientation}\t"
+        params += f"{self.allow_multifurcations}\t"
         params += f"{self.branch_vertical_margin}\t{self.fontsize}\t{self.linewidth}\t{self.taxa_only}\t"
         params += f"{self.topology_only}\t{self.align_taxa}\t" 
         with open(outfile_path, "w") as tsv_file:
@@ -550,6 +562,14 @@ def main():
     argument_parser.add_argument("-da", "--allow_multifurcations", required=False, type=str, 
                                     help="""If true: Tree won't necessarily binary. If false: Tree will be strictly 
                                     binary. Default: True.""")
+    argument_parser.add_argument("-c", "--circular_tree", required=False, action="store_true", default=False,
+                                    help="""On/Off flag. ETE3 only. If True the tree in the image will be in 
+                                    circular format. Currently not within --create_rand_tree's randomized parameters. 
+                                    Default: False.""")
+    argument_parser.add_argument("-rl", "--right_to_left_orientation", required=False, action="store_true", 
+                                    default=False,help="""On/Off flag. ETE only. Specify if tree is oriented from 
+                                    right to left (taxa on the left). Currently not within --create_rand_tree's randomized parameters.
+                                    Default: False (left to right orientation)""")
     argument_parser.add_argument("-vm", "--branch_vertical_margin", required=False, type=int, 
                                     help="""ETE3 only. Amount of pixels between two adjacent branches. 
                                     Should not be smaller than 5. Default: 10 pixels.""")
@@ -582,7 +602,8 @@ def main():
     align_taxa = args.align_taxa
     quiet = args.quiet
     max_amount_taxa = args.max_amount_taxa
-    
+    circular_tree = args.circular_tree
+    right_to_left_orientation = args.right_to_left_orientation 
     ########## CONFIGURE LOGGER ##########
     logFormatter = logging.Formatter("%(asctime)s [%(levelname)-5.5s]  %(message)s")
     stream_handler = logging.StreamHandler(sys.stdout)
@@ -662,13 +683,21 @@ def main():
         max_amount_taxa = 3
     # warn user if they use ete3 parameters with a module other than ete3
     if (not package == "ete3") and (
-        branch_vertical_margin
+        branch_vertical_margin or 
+        circular_tree or 
+        right_to_left_orientation
     ):
         # warn user which parameters cant be applied and reset them to default values
         param_warning = "You are using parameters that are ete3 only:\n"
         if branch_vertical_margin:
             param_warning += "branch_vertical\n"
             branch_vertical_margin = None
+        if circular_tree:
+            param_warning += "circular_tree\n"
+            circular_tree = False
+        if right_to_left_orientation:
+            param_warning += "right_to_left_orientation\n"
+            right_to_left_orientation = False
         console_logger.warning(param_warning)
         print(f"Resetting ete3 parameters. Do you want to proceed?")
         ask_user_to_continue()
@@ -696,6 +725,8 @@ def main():
             outdir_path=outdir_path,
             file_id=file_id,
             package=package,
+            circular_tree=circular_tree,
+            right_to_left_orientation=right_to_left_orientation,
             display_lengths=display_lengths,
             allow_multifurcations=allow_multifurcations,
             branch_vertical_margin=branch_vertical_margin,
@@ -729,6 +760,8 @@ def main():
         Amount of taxa: {tree_render.amount_taxa}
         Used package: {tree_render.package}
         Allow multifurcations: {tree_render.allow_multifurcations}
+        Circular tree: {tree_render.circular_tree}
+        Orientation: {"left to right" if not tree_render.right_to_left_orientation else "right to left"}
         Vertical margin for adjacent branches: {tree_render.branch_vertical_margin if tree_render.package == "ete3" else None}
         Branch lengths displayed: {tree_render.display_lengths}
         Taxa aligned: {tree_render.align_taxa}
