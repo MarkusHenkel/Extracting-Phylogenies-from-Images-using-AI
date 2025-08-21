@@ -1,7 +1,7 @@
 import argparse
 import subprocess
 import os
-import extracting_phylogenies.utilities.utilities as ut
+import extracting_phylogenies.utilities.newick_util as ut
 import sys
 import logging
 import re

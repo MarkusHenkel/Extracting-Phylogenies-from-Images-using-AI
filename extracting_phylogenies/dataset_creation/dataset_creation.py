@@ -14,7 +14,7 @@ import pathlib
 from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar # size bar phylo
 import matplotlib.font_manager as fm # size bar phylo
 from matplotlib.transforms import Bbox # size bar phylo
-from extracting_phylogenies.utilities import utilities as ut
+from extracting_phylogenies.utilities import newick_util as ut
 import sys
 import logging
 

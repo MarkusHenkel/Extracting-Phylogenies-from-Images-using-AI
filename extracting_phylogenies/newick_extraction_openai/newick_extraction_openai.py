@@ -7,7 +7,7 @@ from openai import OpenAI
 import datetime
 from argparse import RawTextHelpFormatter
 from ete3 import Tree
-from extracting_phylogenies.utilities import utilities as ut
+from extracting_phylogenies.utilities import newick_util as ut
 import logging
 from extracting_phylogenies.newick_extraction_openai import instructions as instr
 

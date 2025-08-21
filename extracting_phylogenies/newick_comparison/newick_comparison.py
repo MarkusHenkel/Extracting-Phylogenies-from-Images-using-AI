@@ -1,4 +1,4 @@
-from extracting_phylogenies.utilities import utilities as ut 
+from extracting_phylogenies.utilities import newick_util as ut 
 import argparse # argument parsing 
 from argparse import RawTextHelpFormatter
 import datetime # for error messages and logging
