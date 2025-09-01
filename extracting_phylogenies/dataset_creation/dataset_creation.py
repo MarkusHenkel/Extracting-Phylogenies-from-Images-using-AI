@@ -1,6 +1,6 @@
 from Bio import Phylo
 from ete3 import NCBITaxa
-from ete3 import Tree, TreeStyle, NodeStyle, AttrFace, faces
+from ete3 import Tree, TreeStyle, NodeStyle, faces
 from io import StringIO 
 from numpy import random
 import random
@@ -13,7 +13,6 @@ import os
 import pathlib
 from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar # size bar phylo
 import matplotlib.font_manager as fm # size bar phylo
-from matplotlib.transforms import Bbox # size bar phylo
 from extracting_phylogenies.utilities import newick_util as ut
 import sys
 import logging
@@ -493,7 +492,7 @@ def main():
         fontsize, linewidth, display_lengths, align_taxa. If --create_rand_tree and e.g. package are specified
         then package won't be randomized. Quickly create a diverse dataset instead of one type of image by 
         specifying --create_rand_tree in combination with --number_directories. Can be combined with --topology_only 
-        and --taxa_only --taxa_only."""
+        and --taxa_only."""
     )
     argument_parser.add_argument(
         "-x",

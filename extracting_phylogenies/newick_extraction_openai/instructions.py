@@ -1,6 +1,22 @@
 # file for saving instructions for every type of request
 prompt = "Give me the Newick format of this phylogenetic tree."
 
+instr_correct_newick = """You are given an image of a phylogenetic tree that may have multifurcations and a string in Newick format that may have false formatting and spelling mistakes. 
+Your task is to fix errors in the string in Newick format and output a string in Newick format with valid formatting and no spelling mistakes.  
+        
+Example of correct Newick format: 
+((<taxon1>:<branch_length1>,<taxon2>:<branch_length2>):<branch_length4>,<taxon3>:<branch_length3>);
+
+Guidelines:
+- Reply with nothing but the newick, no explanation, no prefix, no suffix
+- Dont add taxa and branch lengths
+- Dont put backticks around the newick and dont but new lines in the newick
+- Correct parentheses with respect to the topology of the phylogenetic tree in the given image 
+- Make sure every closing parentheses is followed by a comma expect the last closing parentheses e.g. ");"
+- Make sure every opening parenthesis has a closing parenthesis 
+- Make sure there aren't any unnecessary parentheses
+"""
+
 instr_nwk_regular = """You are given an image of a phylogenetic tree that may have multifurcations. 
 You task is to output only the tree in valid Newick format. Preserve all taxa, all branchlengths and topology.
 In case there are no branch lengths then infer the branch lengths from the scale bar.
@@ -94,7 +110,7 @@ Example with multifurcations:
 
 
 instr_topo_regular = """You are given an image of a phylogenetic tree. Your task is to output the topology, taxon 
-names and branch lengths in a hierarchical text format similar to that of Bio.Phylowhen a Tree object is printed.
+names and branch lengths in a hierarchical text format similar to that of Bio.Phylo when a Tree object is printed.
 
 Example:
 Clade()

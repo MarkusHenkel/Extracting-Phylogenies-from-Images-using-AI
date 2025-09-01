@@ -1,8 +1,5 @@
 from extracting_phylogenies.utilities import newick_util as ut 
 import argparse # argument parsing 
-from argparse import RawTextHelpFormatter
-import datetime # for error messages and logging
-import re # parsing newick string
 import nltk # Levenshtein
 from ete3 import Tree # turn newick into tree structure
 import os # for checking outfile paths of the tsv
@@ -173,27 +170,27 @@ class Comparison_Job():
         tsv_entry = f"{get_filename(self.original_newick_path)}\t{get_filename(self.generated_newick_path)}\t"
         tsv_entry+=f"{self.format_original}\t{self.format_generated}\t"
         if taxa_comp:
-            tsv_entry+=f"{taxa_comp["taxa_count_original"]}\t{taxa_comp["taxa_count_generated"]}\t"
-            tsv_entry+=f"{taxa_comp["correct_taxa_ratio"]}\t{taxa_comp["count_equal_length"]}\t{taxa_comp["count_unequal_length"]}\t"
-            tsv_entry+=f"{taxa_comp["mean_hamming_distance"]}\t{taxa_comp["mean_hamming_distance_ratio"]}\t"
-            tsv_entry+=f"{taxa_comp["mean_edit_distance"]}\t{taxa_comp["mean_edit_distance_total"]}\t{taxa_comp["mean_edit_ratio"]}\t"
-            tsv_entry+=f"{taxa_comp["mean_edit_ratio_total"]}\t"
+            tsv_entry+=f"{taxa_comp['taxa_count_original']}\t{taxa_comp['taxa_count_generated']}\t"
+            tsv_entry+=f"{taxa_comp['correct_taxa_ratio']}\t{taxa_comp['count_equal_length']}\t{taxa_comp['count_unequal_length']}\t"
+            tsv_entry+=f"{taxa_comp['mean_hamming_distance']}\t{taxa_comp['mean_hamming_distance_ratio']}\t"
+            tsv_entry+=f"{taxa_comp['mean_edit_distance']}\t{taxa_comp['mean_edit_distance_total']}\t{taxa_comp['mean_edit_ratio']}\t"
+            tsv_entry+=f"{taxa_comp['mean_edit_ratio_total']}\t"
         else:
             tsv_entry+="None\tNone\tNone\tNone\tNone\tNone\tNone\tNone\tNone\tNone\tNone\t"
         if dist_comp:
-            tsv_entry+=f"{dist_comp["mean_abs_diff"]}\t{dist_comp["median_abs_diff"]}\t"
-            tsv_entry+=f"{dist_comp["mean_neg_diff"]}\t{dist_comp["median_neg_diff"]}\t"
-            tsv_entry+=f"{dist_comp["mean_pos_diff"]}\t{dist_comp["median_pos_diff"]}\t"
-            tsv_entry+=f"{dist_comp["mean_pairwise_diff"]}\t{dist_comp["median_pairwise_diff"]}\t"
+            tsv_entry+=f"{dist_comp['mean_abs_diff']}\t{dist_comp['median_abs_diff']}\t"
+            tsv_entry+=f"{dist_comp['mean_neg_diff']}\t{dist_comp['median_neg_diff']}\t"
+            tsv_entry+=f"{dist_comp['mean_pos_diff']}\t{dist_comp['median_pos_diff']}\t"
+            tsv_entry+=f"{dist_comp['mean_pairwise_diff']}\t{dist_comp['median_pairwise_diff']}\t"
         else:
             tsv_entry+="None\tNone\tNone\tNone\tNone\tNone\tNone\tNone\tNone\tNone\tNone\t"
         if topo_comp:
-            tsv_entry+=f"{topo_comp["rf"]}\t{topo_comp["max_rf"]}\t{topo_comp["rf_ratio"]}\t"
-            tsv_entry+=f"{topo_comp["count_original_edges"]}\t{topo_comp["ref_edges_in_source"]}\t"
-            tsv_entry+=f"{topo_comp["count_missing_edges"]}\t{topo_comp["count_common_edges"]}\t"
-            tsv_entry+=f"{topo_comp["correct_edges_ratio"]}\t"
+            tsv_entry+=f"{topo_comp['rf']}\t{topo_comp['max_rf']}\t{topo_comp['rf_ratio']}\t"
+            tsv_entry+=f"{topo_comp['count_original_edges']}\t{topo_comp['ref_edges_in_source']}\t"
+            tsv_entry+=f"{topo_comp['count_missing_edges']}\t{topo_comp['count_common_edges']}\t"
+            tsv_entry+=f"{topo_comp['correct_edges_ratio']}\t"
             # tsv_entry+=f"{topo_comp["treeko_dist"]}\t" # TODO treeko dist always NA
-            tsv_entry+=f"{topo_comp["count_multifurcations_original"]}\t{topo_comp["count_multifurcations_original"]}\t"
+            tsv_entry+=f"{topo_comp['count_multifurcations_original']}\t{topo_comp['count_multifurcations_original']}\t"
         else:
             tsv_entry+="None\tNone\tNone\tNone\tNone\tNone\tNone\tNone\t"
         if param_entry:
@@ -305,7 +302,6 @@ class Comparison_Job():
         generated = generated_tree.write()
         # dictionary for the comparison of taxa
         topo_dict = dict()
-        # before calculating RF distance check if both trees have the same taxa
         comp_dict = original_tree.compare(generated_tree, unrooted=True)
         topo_dict["rf"] = comp_dict["rf"]
         topo_dict["max_rf"] = comp_dict["max_rf"]
@@ -406,7 +402,7 @@ class Comparison_Job():
         abs_pairwise_dist_diffs = []
         # iterate over common leaf pairs and get the absolute difference in pairwise distances
         for leaf1, leaf2 in combinations(common_leaves, 2):
-            # BUG duplicated leaves cause crash in ete3s compare function => quick solution is to skip them
+            # duplicated leaves cause crash in ete3s compare function => quick solution is to skip them
             try:
                 original_dist = original_tree.get_distance(leaf1, leaf2)
             except Exception as e:
@@ -420,8 +416,12 @@ class Comparison_Job():
                 # skip over leaves that are ambiguous
                 continue
             abs_pairwise_dist_diffs.append(abs(original_dist-generated_dist))
-        dist_dict["mean_pairwise_diff"] = round(mean(abs_pairwise_dist_diffs),4)
-        dist_dict["median_pairwise_diff"] = round(median(abs_pairwise_dist_diffs),4)
+        if abs_pairwise_dist_diffs:
+            dist_dict["mean_pairwise_diff"] = round(mean(abs_pairwise_dist_diffs),4)
+            dist_dict["median_pairwise_diff"] = round(median(abs_pairwise_dist_diffs),4)
+        else: 
+            dist_dict["mean_pairwise_diff"] = None
+            dist_dict["median_pairwise_diff"] = None
         return dist_dict
 
 def main():
@@ -506,7 +506,7 @@ def main():
         console_logger.warning(f"Newicks have different formats. Format original newick: {format_original}. Format "
                          f"generated newick: {format_generated}.")
     console_logger.info(
-        f"Comparing {"just topology" if topo_only else "just taxa" if taxa_only else "taxa and branch lengths"}."
+        f"Comparing {'just topology' if topo_only else 'just taxa' if taxa_only else 'taxa and branch lengths'}."
     )
     if outfile_path:
         if os.path.isdir(outfile_path):

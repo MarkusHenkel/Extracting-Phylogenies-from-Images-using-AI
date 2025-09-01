@@ -58,7 +58,7 @@ def remove_support_vals(newick):
     """
     return re.sub(r"(?<=\))\d", "", newick)
 
-def is_newick(newick, format=None):
+def is_newick(newick, format=0):
     """
     Given a newick string checks if it has valid formatting. \n
     Formats:\n
@@ -83,10 +83,7 @@ def is_newick(newick, format=None):
         bool: True only if the formatting is valid
     """
     try:
-        if format:
-            tree = Tree(newick, format=format)
-        else:
-            tree = Tree(newick)
+        tree = Tree(newick, format=format)
     except Exception as e:
         logger.info(f"Newick not parseable: {e}")
         return False
@@ -246,3 +243,15 @@ def get_bool_from_string(string):
         return False
     else:
         raise ValueError(f"Expected bool but {string}")
+    
+def remove_duplicate_leaves(newick):
+        # remove duplicated leaves if there are any
+        leaves_seen = []
+        tree = Tree(newick)
+        leaves = [leaf for leaf in tree.traverse() if leaf.is_leaf()]
+        for leaf in leaves:
+            if leaf.name in leaves_seen:
+                leaf.detach()
+            else:
+                leaves_seen.append(leaf.name)
+        return tree.write()

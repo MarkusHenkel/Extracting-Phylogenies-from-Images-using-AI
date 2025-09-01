@@ -4,8 +4,6 @@ import base64
 import argparse
 import re
 from openai import OpenAI
-import datetime
-from argparse import RawTextHelpFormatter
 from ete3 import Tree
 from extracting_phylogenies.utilities import newick_util as ut
 import logging
@@ -13,9 +11,12 @@ from extracting_phylogenies.newick_extraction_openai import instructions as inst
 
 # create logger
 console_logger = logging.getLogger(__name__)
-
 # environment variable for api key safety
-client = OpenAI(api_key = os.getenv("BA_API_KEY"))
+api_key = os.getenv("BA_API_KEY")
+if api_key is None:
+    raise RuntimeError("Couldn't find BA_API_KEY. Please create a custom environment variable for this script.")
+# create client
+client = OpenAI(api_key=api_key)
 
 def get_image_from_directory(dir_path):
     """
@@ -125,15 +126,12 @@ class Newick_Extraction_Job:
                 with open(self.outfile_path, "w") as nwk_file:
                     nwk_file.write(self.newick)
             else: 
-                raise FileNotFoundError(
-                    f"[{ut.get_time()}] Error in write_extracted_newick_to_file: outfile_path {self.outfile_path} is "
-                    "not valid."
-                )
+                raise FileNotFoundError(f" Error in write_extracted_newick_to_file: outfile_path {self.outfile_path} is not valid.")
         # if no outfile path was given, save the newick in the current working directory
         else:
-            # if os.path.isfile(f".\\{self.model}_{app}{flag}{self.file_id}.nwk"):
+            # TODO change to os.path.join
             if os.path.isfile(f".\\{self.model}_{app}{self.file_id}.nwk"):
-                raise FileExistsError(f"[{ut.get_time()}] Error in write_newick_to_file: File already exists.") 
+                raise FileExistsError(f"File already exists") 
             else:
                 # with open(f".\\{self.model}_{app}{flag}{self.file_id}.nwk", "w") as nwk_file:
                 with open(f".\\{self.model}_{app}{self.file_id}.nwk", "w") as nwk_file:
@@ -156,10 +154,53 @@ class Newick_Extraction_Job:
         elif os.path.isfile(self.infile_path):
             return self.infile_path
         else:
-            raise FileNotFoundError(
-                f"[{ut.get_time()}] Error in get_image_path(): Infile path {self.infile_path} does not exist."
-            )
-            
+            raise FileNotFoundError(f"Infile path does not exist: {self.infile_path}")
+        
+    def get_completions_api_args(self, model, instructions, prompt, b64_image):
+        args = {
+            "model":model,
+            "messages":[
+                {
+                    "role": "system",
+                    "content": instructions
+                },
+                {
+                    "role": "user", 
+                    "content": [
+                        {
+                            "type": "text", 
+                            "text": prompt
+                        },
+                        {
+                            "type": "image_url", 
+                            "image_url": 
+                                {
+                                    "url":f"data:image/{ut.get_image_format(self.get_image_path())};base64,{b64_image}"
+                                }
+                        },
+                    ],
+                }
+            ],
+        }
+        return args
+    
+    def get_reponse_api_args(self, instructions, prompt, b64_image):
+        args = {
+            "model":self.model,
+            "instructions":instructions,
+            "input":[
+                {
+                    "role": "user", 
+                    "content": [
+                        { "type": "input_text", "text": prompt},
+                        { "type": "input_image", "image_url": 
+                            f"data:image/{ut.get_image_format(self.get_image_path())};base64,{b64_image}"},
+                    ],
+                }
+            ],
+        }
+        return args
+        
     def extract_newick_directly(self, instructions):
         """
         Given a path to an image (png, jpg or jpeg) and a OpenAI model returns the newick.
@@ -174,37 +215,29 @@ class Newick_Extraction_Job:
         Returns:
             str: response text by the model
         """
-        if not self.model in ["gpt-4.1", "o4-mini", "gpt-4o", "gpt-5"]:
+        if not self.model in ["gpt-4.1", "o4-mini", "gpt-4o", "gpt-5", "gpt-4.1_finetuned"]:
             raise ValueError(f"""Error in generate_newick_from_image_directly: Given model is not 
-                             supported. Please choose from gpt-4.1, o4-mini, gpt-4o or gpt-5""")
+                             supported. Please choose from gpt-4.1, o4-mini, gpt-4o, gpt-5 or gpt-4.1_finetuned""")
         img_path = self.get_image_path()
-        prompt = "Give me the Newick format of this phylogenetic tree."
+        prompt = "Give me the Newick string of this phylogenetic tree."
         instructions =  instructions
         b64_image = encode_image(img_path)
-        # conditionally include temperature and top_p in the create() functions args because o4-mini does not support it
-        args = {
-            "model":self.model,
-            "instructions":instructions,
-            "input":[
-                {
-                    "role": "user", 
-                    "content": [
-                        { "type": "input_text", "text": prompt},
-                        { "type": "input_image", "image_url": 
-                            f"data:image/{ut.get_image_format(img_path)};base64,{b64_image}"},
-                    ],
-                }
-            ],
-        }
-        # set temperature and top_p only for 4.1 and 4o because 5 and o4 dont support it
-        if self.model == "gpt-4.1" or self.model == "gpt-4o":
-            args["temperature"] = 0.0
-            args["top_p"] = 0.0
-        response = client.responses.create(**args)
-        console_logger.info(f"Model response: {response.output_text}")
+        # if model is finetuned then use the chat completions api instead of the responses api
+        if self.model == "gpt-4.1_finetuned":
+            model = "ft:gpt-4.1-2025-04-14:markus:512px-rand-10taxa:C5bcZvYh"
+            args = self.get_completions_api_args(model=model,instructions=instructions,prompt=prompt, b64_image=b64_image)
+            output = client.chat.completions.create(**args).choices[0].message.content
+        else:
+            args = self.get_reponse_api_args(instructions=instructions,prompt=prompt,b64_image=b64_image)
+            # set temperature and top_p only for 4.1 and 4o because 5 and o4 dont support it
+            if self.model == "gpt-4.1" or self.model == "gpt-4o":
+                args["temperature"] = 0.0
+                args["top_p"] = 0.0
+            output = client.responses.create(**args).output_text
+        console_logger.info(f"Model response: {output}")
         # parse the newick from the reponse
-        if re.search(r"\(.+;", response.output_text):
-            newick = re.search(r"\(.+;", response.output_text).group()
+        if re.search(r"\(.+;", output):
+            newick = re.search(r"\(.+;", output).group()
         else:
             raise ValueError(f"No Newick found in model response.")
         console_logger.info(f"Extracted newick: {newick}")
@@ -305,48 +338,39 @@ class Newick_Extraction_Job:
             model (str, optional): OpenAI model that is used. Defaults to "gpt-4.1".
 
         Returns:
-            str: response text by the model
+            str: response text by the model, topology in simplified Bio.Python print(tree) format
         """
-        if not self.model in ["gpt-4.1", "o4-mini", "gpt-4o", "gpt-5"]:
+        if not self.model in ["gpt-4.1", "o4-mini", "gpt-4o", "gpt-5", "gpt-4.1_finetuned"]:
             raise ValueError(f"""Error in generate_newick_from_image_directly: Given model is not supported. Please 
-                             choose from gpt-4.1, o4-mini, gpt-4o or gpt-5""")
+                             choose from gpt-4.1, o4-mini, gpt-4o, gpt-5 or gpt-4.1_finetuned""")
         img_path = self.get_image_path()
-        prompt = """Give me the hierarchical text format corresponding to this phylogenetic if you created a Bio.Phylo Tree object and printed it."""
+        prompt = """Give me the hierarchical text format corresponding to this phylogenetic."""
         instructions =  instructions
         b64_image = encode_image(img_path)
-        # conditionally include temperature and top_p in the create() functions args because o4-mini does not support it
-        args = {
-            "model":self.model,
-            "instructions":instructions,
-            "input":[
-                {
-                    "role": "user", 
-                    "content": [
-                        { "type": "input_text", "text": prompt},
-                        { "type": "input_image", "image_url": 
-                            f"data:image/{ut.get_image_format(img_path)};base64,{b64_image}"},
-                    ],
-                }
-            ],
-        }
-        # set temperature and top_p only for 4.1 and 4o because 5 and o4 dont support it
-        if self.model == "gpt-4.1" or self.model == "gpt-4o":
-            args["temperature"] = 0.0
-            args["top_p"] = 0.0
-        response = client.responses.create(**args)
-        topology = response.output_text
+        # get response
+        if self.model == "gpt-4.1_finetuned":
+            model = "ft:gpt-4.1-2025-04-14:markus:512px-rand-10taxa:C5bcZvYh"
+            args = self.get_completions_api_args(model=model,instructions=instructions,prompt=prompt,b64_image=b64_image)
+            output = client.chat.completions.create(**args).choices[0].message.content
+        else:
+            args = self.get_reponse_api_args(instructions=instructions,prompt=prompt,b64_image=b64_image)
+            # conditionally include temperature and top_p in the args because o4-mini and gpt5 do not support it
+            if self.model == "gpt-4.1" or self.model == "gpt-4o":
+                args["temperature"] = 0.0
+                args["top_p"] = 0.0
+            output = client.chat.completions.create(**args).output_text
         # set taxa_only and topo_only to true if topology has no distances or no distances and no taxon names
-        if not (branch_lengths := re.search(r"(?<=branch_length=)\d", topology)) and not \
-            re.search(r"(?<=name=)[\']{0,1}\w", topology):
+        if not (branch_lengths := re.search(r"(?<=branch_length=)\d", output)) and not \
+            re.search(r"(?<=name=)[\']{0,1}\w", output):
                 self.topo_only = True
         elif not branch_lengths:
             self.taxa_only = True
-        console_logger.info(f"Extracted topology: {topology}")
+        console_logger.info(f"Extracted topology: {output}")
         console_logger.info(f"Topology is taxa-only: {self.taxa_only}")
         console_logger.info(f"Topology is topo-only: {self.topo_only}")
-        return topology
+        return output
     
-    def postprocess_newick(self, newick):
+    def postprocess_newick(self, newick, ai_postprocessing = False):
         """
         Given a newick returns the postprocessed one. 
         Passes the newick to the Job object's model if necessary and does manual postprocessing if it fails.
@@ -354,7 +378,8 @@ class Newick_Extraction_Job:
 
         Args:
             newick (str): newick string that needs postprocessing
-
+            ai_postprocessing (bool): option to rerun a newick with faulty formatting using the correct_newick function
+            
         Returns:
             str: postprocessed newick
         """
@@ -365,20 +390,12 @@ class Newick_Extraction_Job:
             console_logger.info("Newick is topology-only.")
             self.topo_only = True
             format = 100
-        # remove duplicated leaves if there are any
-        if not self.topo_only:
-            leaves_seen = []
-            tree = Tree(newick)
-            leaves = [leaf for leaf in tree.traverse() if leaf.is_leaf()]
-            for leaf in leaves:
-                if leaf.name in leaves_seen:
-                    leaf.detach()
-                else:
-                    leaves_seen.append(leaf.name)
-            newick = tree.write()
         # if newick's formatting is correct skip AI postprocessing otherwise do it
         if ut.is_newick(newick, format=format):
-            console_logger.info(f"Skipping AI post-processing.")    
+            # remove duplicate leaves
+            if not self.topo_only:
+                newick = ut.remove_duplicate_leaves(newick)
+            console_logger.info(f"Skipping post-processing.")    
             # create tree and write it to let ete3 remove unnecessary parentheses and spaces
             newick = Tree(newick, format=format).write()
             # remove placeholder distances by ete3 if newick originally didnt have any
@@ -389,10 +406,11 @@ class Newick_Extraction_Job:
             console_logger.info(f"Post-processing was successful. Newick: {newick}")
             return newick
         else:
-            console_logger.info(f"Starting AI-postprocessing.")
-            newick = self.correct_newick(newick)
-            if not ut.is_newick(newick):
-                console_logger.info(f"AI post-processing failed. Continuing with manual postprocessing.")
+            if ai_postprocessing == True:
+                console_logger.info(f"Starting AI-postprocessing.")
+                newick = self.correct_newick(newick)
+                if not ut.is_newick(newick):
+                    console_logger.info(f"AI post-processing failed. Continuing with manual postprocessing.")
             # remove special chars from taxa by removing them from each taxon seperately
             newick = re.sub(
                 r"(?<=[,(])[\d\w\.\-\"\'#]+(?=[\:\)\,])", # matches taxa
@@ -404,6 +422,9 @@ class Newick_Extraction_Job:
                 newick = ut.balance_parentheses(newick)
             # create tree and write it to let ete3 remove unnecessary parentheses and spaces
             if ut.is_newick(newick, format=format):
+                # remove duplicate leaves
+                if not self.topo_only:
+                    newick = ut.remove_duplicate_leaves(newick)
                 newick = Tree(newick, format=format).write()
                 # remove placeholder distances by ete3 if newick originally didnt have any
                 if self.taxa_only or self.topo_only:
@@ -421,44 +442,22 @@ class Newick_Extraction_Job:
         # TODO add doc string
         b64_image = encode_image(self.get_image_path())
         prompt=f"""This is a phylogenetic tree and this the corresponding erroneous Newick: {erroneous_newick}. The 
-        Newick might have spelling mistakes, missing taxa and wrong formatting. Give me the correct Newick."""
-        instructions = """You are given an image of a phylogenetic tree that may have multifurcations and a string in 
-        Newick format that may have false formatting and spelling mistakes. Your task is to fix errors in the string in 
-        Newick format and output a string in Newick format with valid formatting and no spelling mistakes.  
-        
-        Example of correct Newick format: 
-        ((<taxon1>:<branch_length1>,<taxon2>:<branch_length2>):<branch_length4>,<taxon3>:<branch_length3>);
-        
-        Guidelines:
-        - Reply with nothing but the newick, no explanation, no prefix, no suffix
-        - Dont add taxa and branch lengths
-        - Dont put backticks around the newick and dont but new lines in the newick
-        - Correct parentheses with respect to the topology of the phylogenetic tree in the given image 
-        - Make sure every closing parentheses is followed by a comma expect the last closing parentheses e.g. ");"
-        - Make sure every opening parenthesis has a closing parenthesis 
-        - Make sure there aren't any unnecessary parentheses
-        """
-        # conditionally include temperature and top_p in the create() functions args because o4-mini does not support it
-        args = {
-            "model":self.model,
-            "instructions":instructions,
-            "input":[
-                {
-                    "role": "user", 
-                    "content": [
-                        { "type": "input_text", "text": prompt},
-                        { "type": "input_image", "image_url": 
-                            f"data:image/{ut.get_image_format(self.get_image_path())};base64,{b64_image}"},
-                    ],
-                }
-            ],
-        }
-        if self.model == "gpt-4.1" or self.model == "gpt-4o":
-            args["temperature"] = 0.0
-            args["top_p"] = 0.0
-        response = client.responses.create(**args)
-        if re.search(r"\(.+;", response.output_text):
-            updated_newick = re.search(r"\(.+;", response.output_text).group()
+        Newick string might have spelling mistakes, missing taxa and wrong formatting. Give me the correct Newick string."""
+        instructions = instr.instr_correct_newick
+        # finetuned models do no support the responses api
+        if self.model == "gpt-4.1_finetuned":
+            model = "ft:gpt-4.1-2025-04-14:markus:512px-rand-10taxa:C5bcZvYh"
+            args = self.get_completions_api_args(model=model,instructions=instructions,prompt=prompt, b64_image=b64_image)
+            output = client.chat.completions.create(**args).choices[0].message.content
+        else:
+            args = self.get_reponse_api_args(instructions=instructions,prompt=prompt,b64_image=b64_image)
+            # conditionally include temperature and top_p in the args because o4-mini and gpt-5 do not support it
+            if self.model == "gpt-4.1" or self.model == "gpt-4o":
+                args["temperature"] = 0.0
+                args["top_p"] = 0.0
+            output = client.responses.create(**args).output_text
+        if re.search(r"\(.+;", output):
+            updated_newick = re.search(r"\(.+;", output).group()
         else:
             console_logger.warning(f"No Newick found in the model's response. Returning empty newick.")
             return ";"
@@ -469,9 +468,9 @@ def main():
         description="""Newick encoding of images containing phylogenetic trees using AI.\n  Modes:
         generate_newick_directly: \n
           You can either provide a single directory with an image or the path to your image 
-          + "the path where the image is saved at. If you provide just the directory then the first image found in the
+          + the path where the image is saved at. If you provide just the directory then the first image found in the
           directory will be used and the resulting newick saved into this directory. 'directly' refers to the AI being
-          told to generate the Newick format of an image directly without an intermediate manual processing step which
+          told to generate the Newick string of an image directly without an intermediate manual processing step which
           tests the AIs Newick formatting ablities.""",
     )
     # argument for passing the path where the newick/image pair is saved at
@@ -512,14 +511,12 @@ def main():
                                  help="""Path where the newick is saved at. If the path points to a directory the 
                                  newick will be saved there inside a predictions directory. If no path is provided the 
                                  output is printed to console to allow for use in pipelines.""")
-    argument_parser.add_argument("-m", "--model", required=False, choices=["gpt-4o", "gpt-4.1", "o4-mini", "gpt-5"], 
+    argument_parser.add_argument("-m", "--model", required=False, choices=["gpt-4o", "gpt-4.1", "o4-mini", "gpt-5", "gpt-4.1_finetuned"], 
                                  type=str, 
                                  default="gpt-4.1",
                                  help="""Choose which OpenAI model is used in the generation of the newick string. 
-                                 Choose from GPT-4o, GPT-4.1 or o4-mini. Default model used is GPT-4.1.""")
-    # argument_parser.add_argument("-t", "--get_taxa_first", required=False, action="store_true", default=False,
-    #                              help="""On/Off flag. If specified taxa will be extracted by the chosen model in a 
-    #                              first step and then passed to the model together with the image.""")
+                                 Choose from gpt-4o, gpt-4.1, o4-mini, gpt-5 or gpt-4.1_finetuned. 
+                                 Default model used is GPT-4.1.""")
     argument_parser.add_argument("--quiet", required=False, action="store_true", default=False,
                                  help="""On/Off flag. If --quiet is specified all console logs will be disabled and 
                                  only the output printed out. This is useful inside a pipeline where the newick is 
@@ -561,20 +558,24 @@ def main():
     )
     
     # decide which instructions to use
-    if approach == "extract_nwk" and format == "regular":
-        instructions = instr.instr_nwk_regular
-    elif approach == "extract_nwk" and format == "taxa_only":
-        instructions = instr.instr_nwk_taxa_only
-    elif approach == "extract_nwk" and format == "topo_only":
-        instructions = instr.instr_nwk_topo_only
-    elif approach == "extract_nwk" and format == "no_format":
-        instructions = instr.instr_nwk_all_cases
-    elif approach == "extract_topo" and format == "regular":
-        instructions = instr.instr_topo_regular
-    elif approach == "extract_topo" and format == "taxa_only":
-        instructions = instr.instr_topo_taxa_only
-    elif approach == "extract_topo" and format == "topo_only":
-        instructions = instr.instr_topo_topo_only
+    if approach == "extract_nwk":
+        if format=="regular":
+            instructions = instr.instr_nwk_regular
+        elif format == "taxa_only":
+            instructions = instr.instr_nwk_taxa_only
+        elif format == "topo_only":
+            instructions = instr.instr_nwk_topo_only    
+        elif format == "no_format":
+            instructions = instr.instr_nwk_all_cases
+    elif approach == "extract_topo":
+        if format=="regular":
+            instructions = instr.instr_topo_regular
+        elif format == "taxa_only":
+            instructions = instr.instr_topo_taxa_only
+        elif format == "topo_only":
+            instructions = instr.instr_topo_topo_only    
+        elif format == "no_format":
+            instructions = instr.instr_topo_all_cases
     else:
         raise ValueError("No instructions implemented for chosen combination of approach and format.")
         

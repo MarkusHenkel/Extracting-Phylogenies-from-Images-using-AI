@@ -58,19 +58,21 @@ def create_jsonl_entry_base64(base64_string, prompt, instructions, truth):
     }
     return json.dumps(entry)
 
-def create_jsonl_file_base64(dataset_path, jsonl_dirpath):
+
+augment= aug.pad_resize_augment_wrapper(image_size=1024, normalize=False, to_tensor=False)
+
+def create_jsonl_file_base64(dataset_path, jsonl_dirpath, augment=augment, chunk_size=100):
     """
     Takes a path to a dataset and instead of creating one huge jsonl, splits up the jsonl into smaller jsonls of at 
-    most 100 image/nwk pairs to fly under the maximum jsonl 
+    most <chunk_size> image/nwk pairs to fly under the maximum jsonl size
 
     Args:
         dataset_path (str): path to dataset
         jsonl_dirpath (str): path to directory where jsonl chunks are saved
+        chunk_size (int): number 
     """
     # load dataset 
     dataset = load_dataset(dataset_path)
-    # set the used augmentation with the preferred image size 
-    augment= aug.pad_resize_augment_wrapper(image_size=1024, normalize=False, to_tensor=False)
     # set counter for jsonl entries
     entry_count = 0
     # set file counter
@@ -99,7 +101,7 @@ def create_jsonl_file_base64(dataset_path, jsonl_dirpath):
         contents+="\n"
         entry_count += 1
         # make chunks of at most size 100
-        if entry_count >= 100 or i == len(dataset)-1:
+        if entry_count >= chunk_size or i == len(dataset)-1:
             # create the file if it doesnt exist, otherwise append entries  
             with open(jsonl_outfile, "w") as jsonl:
                 jsonl.write(contents)        
@@ -138,19 +140,3 @@ def upload_chunks(jsonl_dir):
     else:
         raise ValueError(f"No chunks to upload, dir has no files: {jsonl_dir}")
         
-def main():    
-    # set filepaths for jsonl (empty or non-empty) and dataset
-    jsonl_dirpath_storage = r"D:\Markus_jsonl_dateien"
-    # dataset_filepath = r"C:\Users\marku\Desktop\StudiumVault\Semester6\Bachelorarbeit\Code\Extracting-Phylogenies-from-Images-using-AI\datasets\openai_finetuning_randomized"
-    test_dataset = r"C:\Users\marku\Desktop\StudiumVault\Semester6\Bachelorarbeit\Code\Extracting-Phylogenies-from-Images-using-AI\datasets\openai_test"
-    
-    # create the jsonl files
-    # create_jsonl_file_base64(dataset_path=test_dataset, jsonl_dirpath=jsonl_dirpath_storage)
-    
-    # upload the split up jsonls
-    # upload_chunks(jsonl_dirpath_storage)
-    
-    
-    
-    
-main()

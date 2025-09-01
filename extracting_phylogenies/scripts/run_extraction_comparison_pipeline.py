@@ -21,7 +21,8 @@ def main():
     arg_parser.add_argument("-m", "--model", required=False,default="gpt-4.1",nargs="+",
                             help="""Choose the OpenAI model used for creating the newick. If multiple models are 
                             specified after --model e.g. '-m gpt-4.1 gpt-5' then for each model specified a newick is
-                            generated and compared to the original. Options: gpt-4.1, gpt-4o, o4-mini, gpt-5""")
+                            generated and compared to the original. Options: gpt-4.1, gpt-4o, o4-mini, gpt-5 or 
+                            gpt-4.1_finetuned""")
     arg_parser.add_argument(
         "-a",
         "--approach", 
